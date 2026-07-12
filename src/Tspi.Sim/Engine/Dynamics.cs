@@ -24,6 +24,29 @@ public struct MotionDeriv
 }
 
 /// <summary>
+/// The swappable aircraft-dynamics seam (see docs/ARCHITECTURE.md, "Fidelity level").
+/// Engine contract, per output sample at time t:
+///   1. Acceleration(state, originAlt) refreshes channel outputs for the sample state
+///      (it is also what RK4 evaluates at each stage);
+///   2. Attitude(state) and BodyRates are recorded;
+///   3. after the translational RK4 step, StepRotation(newState, t+dt, dt, originAlt)
+///      advances any internal rotational state across the same interval.
+/// Implementations with synthesized attitude return null BodyRates (the writer
+/// finite-differences rates from attitude) and treat StepRotation as a no-op.
+/// </summary>
+public interface IAircraftDynamics
+{
+    void SetSpeed(SpeedCmd? cmd);
+    void SetLateral(LateralCmd? cmd, double currentHeadingRad);
+    void SetVertical(VerticalCmd? cmd, double currentAltMsl);
+    Vec3d Acceleration(MotionState st, double originAltM);
+    QuatD Attitude(MotionState st);
+    /// <summary>Integrated body rates at the current sample, or null when attitude is synthesized.</summary>
+    Vec3d? BodyRates { get; }
+    void StepRotation(MotionState st, double tSec, double dt, double originAltM);
+}
+
+/// <summary>
 /// Kinematic aircraft autopilot. Attitude is derived from the flight path plus a
 /// coordinated-turn bank angle rather than integrated from aero moments — the right
 /// altitude for a notional visualizer, and it needs no (export-sensitive) aero data.
@@ -33,7 +56,7 @@ public struct MotionDeriv
 ///   vertical -> vertical accel toward a commanded climb rate
 /// Gravity is implicitly balanced by lift (the jet flies where commanded).
 /// </summary>
-public sealed class AircraftDynamics
+public sealed class AircraftDynamics : IAircraftDynamics
 {
     private readonly VehicleModel _model;
 
@@ -161,6 +184,11 @@ public sealed class AircraftDynamics
         double pitch = speed > 1e-3 ? System.Math.Asin(MathUtil.Clamp(-v.Z / speed, -1, 1)) : 0.0;
         return QuatD.FromYprNed(yaw, pitch, LastBankRad);
     }
+
+    /// <summary>Synthesized attitude has no integrated rates; the writer finite-differences them.</summary>
+    public Vec3d? BodyRates => null;
+
+    public void StepRotation(MotionState st, double tSec, double dt, double originAltM) { }
 }
 
 /// <summary>

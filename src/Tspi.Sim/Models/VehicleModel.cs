@@ -30,7 +30,29 @@ public sealed class VehicleModel
     public double FuzeRadiusM { get; set; } = 10.0;
     public double MaxFlightTimeS { get; set; } = 120.0;
 
+    /// <summary>
+    /// Optional rigid-body rotational dynamics (aircraft only). Presence selects the
+    /// torque-integrated attitude path; absence keeps flight-path attitude synthesis.
+    /// </summary>
+    public RotationalSpec? Rotational { get; set; }
+
     public const string SchemaId = "tspi-model/1";
+}
+
+/// <summary>
+/// Rigid-body rotational parameters, all NOTIONAL. Inertia is the principal-axis
+/// (diagonal) tensor in body axes; control torque models aggregate surface authority.
+/// </summary>
+public sealed class RotationalSpec
+{
+    /// <summary>Principal moments of inertia [Ixx, Iyy, Izz], body axes, kg·m².</summary>
+    public double[] InertiaKgm2 { get; set; } = new double[3];
+    /// <summary>Control torque authority per body axis [roll, pitch, yaw], N·m.</summary>
+    public double[] MaxTorqueNm { get; set; } = new double[3];
+    /// <summary>Attitude-error proportional gain, 1/s² (default: ~3 rad/s bandwidth).</summary>
+    public double AttitudeKp { get; set; } = 9.0;
+    /// <summary>Body-rate damping gain, 1/s (default: critically damped with Kp=9).</summary>
+    public double AttitudeKd { get; set; } = 6.0;
 }
 
 public sealed class BoostSpec
@@ -114,6 +136,7 @@ public sealed class ModelLibrary
                     throw new InvalidDataException($"kind must be 'aircraft' or 'munition' (got '{m.Kind}')");
                 if (m.MassKg <= 0)
                     throw new InvalidDataException("mass_kg must be > 0");
+                ValidateRotational(m);
                 _cache[name] = (m, Manifest.ManifestJson.Sha256Hex(raw));
                 model = m;
                 shaHex = _cache[name].ShaHex;
@@ -129,5 +152,27 @@ public sealed class ModelLibrary
         error = "no '" + name + ".json' in search dirs [" + string.Join(", ", _searchDirs) + "]";
         _errors[name] = error;
         return false;
+    }
+
+    private static void ValidateRotational(VehicleModel m)
+    {
+        if (m.Rotational is not { } rot) return;
+        if (m.Kind != "aircraft")
+            throw new InvalidDataException("rotational requires kind 'aircraft' (munition attitude is velocity-aligned in v1)");
+        CheckAxes(rot.InertiaKgm2, "rotational.inertia_kgm2");
+        CheckAxes(rot.MaxTorqueNm, "rotational.max_torque_nm");
+        if (rot.AttitudeKp <= 0)
+            throw new InvalidDataException("rotational.attitude_kp must be > 0");
+        if (rot.AttitudeKd < 0)
+            throw new InvalidDataException("rotational.attitude_kd must be >= 0");
+    }
+
+    private static void CheckAxes(double[]? v, string field)
+    {
+        if (v is not { Length: 3 })
+            throw new InvalidDataException(field + " must be a 3-element array");
+        foreach (double x in v)
+            if (!(x > 0))
+                throw new InvalidDataException(field + " components must be > 0");
     }
 }

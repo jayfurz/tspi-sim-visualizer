@@ -17,15 +17,23 @@ public sealed class Trajectory
     public readonly List<Vec3d> Pos = new();
     public readonly List<Vec3d> Vel = new();
     public readonly List<QuatD> Att = new();
+    /// <summary>Integrated body rates, populated only by rigid-body dynamics (all samples or none).</summary>
+    public readonly List<Vec3d> OmegaBody = new();
 
     public int Count => Pos.Count;
     public double EndSec => T0Sec + (Count - 1) * DtSec;
+    /// <summary>True when every sample carries an integrated body rate (vs finite-differenced on write).</summary>
+    public bool HasTrueRates => Count > 0 && OmegaBody.Count == Count;
 
-    public void Add(Vec3d pos, Vec3d vel, QuatD att)
+    public void Add(Vec3d pos, Vec3d vel, QuatD att, Vec3d? omegaBody = null)
     {
+        bool consistent = omegaBody != null ? OmegaBody.Count == Pos.Count : OmegaBody.Count == 0;
+        if (!consistent)
+            throw new InvalidOperationException("trajectory cannot mix integrated and synthesized body rates");
         Pos.Add(pos);
         Vel.Add(vel);
         Att.Add(att);
+        if (omegaBody is { } w) OmegaBody.Add(w);
     }
 
     /// <summary>Hermite-interpolated pos/vel at tSec (clamped to the trajectory span).</summary>
@@ -52,20 +60,24 @@ public sealed class Trajectory
         return new MotionState { Pos = pos, Vel = vel };
     }
 
-    /// <summary>Build fixed-stride records, deriving body rates by finite difference of attitude.</summary>
+    /// <summary>Build fixed-stride records; body rates are the integrated ω when present,
+    /// otherwise finite-differenced from attitude.</summary>
     public List<TspiRecord> ToRecords()
     {
         var records = new List<TspiRecord>(Count);
         for (int i = 0; i < Count; i++)
-        {
-            Vec3d omega;
-            if (Count == 1) omega = Vec3d.Zero;
-            else if (i < Count - 1) omega = QuatD.BodyRates(Att[i], Att[i + 1], DtSec);
-            else omega = QuatD.BodyRates(Att[i - 1], Att[i], DtSec);
-            records.Add(TspiRecord.From(Pos[i], Vel[i], Att[i].Normalized(), omega));
-        }
+            records.Add(TspiRecord.From(Pos[i], Vel[i], Att[i].Normalized(), OmegaAt(i)));
         EnforceQuatSignContinuity(records);
         return records;
+    }
+
+    private Vec3d OmegaAt(int i)
+    {
+        if (HasTrueRates) return OmegaBody[i];
+        if (Count == 1) return Vec3d.Zero;
+        return i < Count - 1
+            ? QuatD.BodyRates(Att[i], Att[i + 1], DtSec)
+            : QuatD.BodyRates(Att[i - 1], Att[i], DtSec);
     }
 
     /// <summary>
@@ -79,11 +91,7 @@ public sealed class Trajectory
         float pw = 0, px = 0, py = 0, pz = 0;
         for (int i = 0; i < Count; i++)
         {
-            Vec3d omega;
-            if (Count == 1) omega = Vec3d.Zero;
-            else if (i < Count - 1) omega = QuatD.BodyRates(Att[i], Att[i + 1], DtSec);
-            else omega = QuatD.BodyRates(Att[i - 1], Att[i], DtSec);
-            var rec = TspiRecord.From(Pos[i], Vel[i], Att[i].Normalized(), omega);
+            var rec = TspiRecord.From(Pos[i], Vel[i], Att[i].Normalized(), OmegaAt(i));
             if (hasPrev)
             {
                 double dot = pw * rec.QuatW + px * rec.QuatX + py * rec.QuatY + pz * rec.QuatZ;

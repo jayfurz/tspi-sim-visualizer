@@ -119,7 +119,17 @@ and additive evolution are worth it. Unknown keys must be ignored by readers.
 `ground_impact`, `expire`. `miss_m` (sub-dt refined closest-approach distance) rides in
 `data`. `environment` records the atmosphere + wind the run used and is carried forward
 across appends, so a later `tspi append` flies its munitions in the same air mass. The
-`dynamics` provenance tag marks the fidelity level (kinematic, not aero-moment 6-DoF).
+`dynamics` provenance tag marks the fidelity level. Translation is always kinematic
+point-mass; the attitude fragment says how aircraft attitude was produced:
+
+- `kinematic-3dof+synth-attitude` — attitude synthesized from the flight path, body
+  rates finite-differenced (v1 default).
+- `kinematic-3dof+rigid-attitude` — every aircraft's attitude integrated from rigid-body
+  rotational EOM (models with a `rotational` block); recorded body rates are the
+  integrated ω.
+- `kinematic-3dof+mixed-attitude` — scenario mixes both kinds of aircraft.
+
+Munition attitude is velocity-aligned (synthesized) in all three cases.
 
 ## Trailer (32 bytes, always the last 32 bytes of the file)
 

@@ -1,0 +1,15 @@
+{
+  "schema": "tspi-model/1",
+  "kind": "aircraft",
+  "mass_kg": 12000,
+  "g_limit_max": 9.0,
+  "accel_long_max_mps2": 40.0,
+  "accel_vert_max_mps2": 60.0,
+  "speed_max_mps": 600.0,
+  "rotational": {
+    "inertia_kgm2": [15000, 80000, 90000],
+    "max_torque_nm": [80000, 150000, 120000],
+    "attitude_kp": 9.0,
+    "attitude_kd": 6.0
+  }
+}

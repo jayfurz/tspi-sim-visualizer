@@ -26,6 +26,32 @@
     "drag_cda_m2": { "type": "number", "minimum": 0, "default": 0 },
     "pronav_gain_default": { "type": "number", "minimum": 0, "default": 4.0 },
     "fuze_radius_m": { "type": "number", "exclusiveMinimum": 0, "default": 10.0 },
-    "max_flight_time_s": { "type": "number", "exclusiveMinimum": 0, "default": 120.0 }
-  }
+    "max_flight_time_s": { "type": "number", "exclusiveMinimum": 0, "default": 120.0 },
+    "rotational": {
+      "description": "Rigid-body rotational dynamics (aircraft only). Presence selects torque-integrated attitude instead of flight-path synthesis. All values NOTIONAL.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inertia_kgm2", "max_torque_nm"],
+      "properties": {
+        "inertia_kgm2": {
+          "description": "Principal moments of inertia [Ixx, Iyy, Izz], body axes, kg·m².",
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "max_torque_nm": {
+          "description": "Control torque authority per body axis [roll, pitch, yaw], N·m.",
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "attitude_kp": { "type": "number", "exclusiveMinimum": 0, "default": 9.0 },
+        "attitude_kd": { "type": "number", "minimum": 0, "default": 6.0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "munition" } }, "required": ["kind"] },
+      "then": { "not": { "required": ["rotational"] } }
+    }
+  ]
 }

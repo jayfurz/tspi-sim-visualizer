@@ -19,6 +19,8 @@ public sealed class SimResult
     public Dictionary<uint, string> OrdToId = new();
     /// <summary>Opaque environment descriptor persisted into the file footer (null if none).</summary>
     public Dictionary<string, object>? EnvironmentJson;
+    /// <summary>Honesty tag for provenance: which attitude fidelity produced these records.</summary>
+    public string DynamicsTag = SimWriter.DynSynthAttitude;
 }
 
 /// <summary>Lightweight result of a streamed run — no trajectories retained (they were written and dropped).</summary>
@@ -60,6 +62,7 @@ public static class SceneEngine
             DtSec = dt,
             Origin = m.Scene.OriginLla,
             EnvironmentJson = EnvironmentSerialization.ToJson(m.Scene.Environment),
+            DynamicsTag = DynamicsTag(m, models),
         };
         var env = new Environment(m.Scene);
         foreach (var p in Produce(m, models, env, dt, steps))
@@ -115,7 +118,7 @@ public static class SceneEngine
                 // p.Traj is now GC-eligible if it was a munition; aircraft are retained by Produce.
             }
             w.SetEnvironment(EnvironmentSerialization.ToJson(m.Scene.Environment));
-            w.AddProvenance(SimWriter.ProvenanceRecord(manifestShaHex, m.Seed, models, "run"));
+            w.AddProvenance(SimWriter.ProvenanceRecord(manifestShaHex, m.Seed, models, "run", DynamicsTag(m, models)));
             w.Finish();
         }
         summary.Events = summary.Events.OrderBy(ev => ev.TNs).ToList();
@@ -246,6 +249,24 @@ public static class SceneEngine
         return e?.Team ?? "gray";
     }
 
+    /// <summary>
+    /// The provenance honesty tag, decided by the aircraft models in play: a `rotational`
+    /// block means integrated rigid-body attitude, otherwise flight-path synthesis.
+    /// Munition attitude is always velocity-aligned in v1 and does not enter the tag.
+    /// </summary>
+    private static string DynamicsTag(ScenarioManifest m, ModelLibrary models)
+    {
+        bool anyRigid = false, anySynth = false;
+        foreach (var e in m.Entities)
+        {
+            models.TryResolve(e.Model, out var model, out _, out _);
+            if (model?.Rotational != null) anyRigid = true;
+            else anySynth = true;
+        }
+        if (!anyRigid) return SimWriter.DynSynthAttitude;
+        return anySynth ? SimWriter.DynMixedAttitude : SimWriter.DynRigidAttitude;
+    }
+
     // ---------------- aircraft ----------------
 
     private static Trajectory IntegrateAircraft(EntitySpec e, VehicleModel model, Environment env,
@@ -255,7 +276,7 @@ public static class SceneEngine
         var state = new MotionState { Pos = init.Pos, Vel = init.Vel };
         double heading0 = state.Vel.LengthHorizontal > 1e-3
             ? System.Math.Atan2(state.Vel.Y, state.Vel.X) : 0.0;
-        var dyn = new AircraftDynamics(model, state.Vel.Length, heading0);
+        IAircraftDynamics dyn = CreateAircraftDynamics(e, model, state, heading0);
 
         // Optional explicit initial attitude only affects the first sample's synthesized
         // attitude via bank; flight-path yaw/pitch come from velocity. Segments sorted by time.
@@ -279,8 +300,8 @@ public static class SceneEngine
                 dyn.SetVertical(seg.Vertical, curAlt);
             }
 
-            dyn.Acceleration(state, originAltM); // sets LastBankRad for attitude synthesis
-            traj.Add(state.Pos, state.Vel, dyn.Attitude(state));
+            dyn.Acceleration(state, originAltM); // refresh channel outputs for this sample's state
+            traj.Add(state.Pos, state.Vel, dyn.Attitude(state), dyn.BodyRates);
 
             if (i == steps) break;
             state = Rk4(state, t, dt, (tt, s) =>
@@ -290,9 +311,39 @@ public static class SceneEngine
                 var air = new MotionState { Pos = s.Pos, Vel = s.Vel - wind };
                 return dyn.Acceleration(air, originAltM);
             });
+            // Rigid-body attitude advances in lock-step, chasing the post-step flight path
+            // (no-op for synthesized attitude).
+            dyn.StepRotation(state, t + dt, dt, originAltM);
             windSampler.Step(dt);
         }
         return traj;
+    }
+
+    /// <summary>
+    /// The swappable-dynamics seam: a model with a `rotational` block flies with true
+    /// rigid-body rotational dynamics; otherwise attitude is synthesized from the flight
+    /// path (the v1 default, byte-identical to before this seam existed).
+    /// </summary>
+    private static IAircraftDynamics CreateAircraftDynamics(EntitySpec e, VehicleModel model,
+        MotionState state, double heading0)
+    {
+        double speed0 = state.Vel.Length;
+        if (model.Rotational is null)
+            return new AircraftDynamics(model, speed0, heading0);
+
+        QuatD q0;
+        if (e.Initial.AttYprDeg is { Length: 3 } ypr)
+        {
+            q0 = QuatD.FromYprNed(ypr[0] * MathUtil.Deg2Rad, ypr[1] * MathUtil.Deg2Rad, ypr[2] * MathUtil.Deg2Rad);
+        }
+        else
+        {
+            // Velocity-aligned, wings level — same convention as the synthesized attitude.
+            double pitch0 = speed0 > 1e-3
+                ? System.Math.Asin(MathUtil.Clamp(-state.Vel.Z / speed0, -1, 1)) : 0.0;
+            q0 = QuatD.FromYprNed(heading0, pitch0, 0.0);
+        }
+        return new RigidBodyAircraftDynamics(model, speed0, heading0, q0);
     }
 
     // ---------------- munition ----------------

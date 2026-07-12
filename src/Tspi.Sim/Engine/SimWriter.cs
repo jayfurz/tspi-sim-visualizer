@@ -33,7 +33,7 @@ public static class SimWriter
         }
         w.AddEvents(result.Events);
         w.SetEnvironment(result.EnvironmentJson);
-        w.AddProvenance(ProvenanceRecord(manifestShaHex, seed, models, "run"));
+        w.AddProvenance(ProvenanceRecord(manifestShaHex, seed, models, "run", result.DynamicsTag));
         w.Finish();
     }
 
@@ -64,14 +64,22 @@ public static class SimWriter
         throw new InvalidOperationException("no ord for entity '" + id + "'");
     }
 
+    /// <summary>All aircraft attitude synthesized from the flight path (v1 default).</summary>
+    public const string DynSynthAttitude = "kinematic-3dof+synth-attitude";
+    /// <summary>All aircraft attitude integrated from rigid-body rotational EOM.</summary>
+    public const string DynRigidAttitude = "kinematic-3dof+rigid-attitude";
+    /// <summary>Scenario mixes synthesized- and rigid-attitude aircraft.</summary>
+    public const string DynMixedAttitude = "kinematic-3dof+mixed-attitude";
+
     /// <summary>
-    /// One provenance record per write/append. The `dynamics` tag is an honesty marker: the
-    /// aircraft model is kinematic point-mass translation with attitude synthesized from the
-    /// flight path (not aero-moment 6-DoF), so consumers know what the stored 6-DoF-shaped
-    /// records actually represent.
+    /// One provenance record per write/append. The `dynamics` tag is an honesty marker:
+    /// translation is always kinematic point-mass; the attitude fragment says whether
+    /// aircraft attitude was synthesized from the flight path or integrated from
+    /// rigid-body rotational EOM (munition attitude is always velocity-aligned in v1),
+    /// so consumers know what the stored 6-DoF-shaped records actually represent.
     /// </summary>
     public static Dictionary<string, object> ProvenanceRecord(string manifestShaHex, ulong seed,
-        ModelLibrary models, string op)
+        ModelLibrary models, string op, string dynamicsTag = DynSynthAttitude)
     {
         var modelHashes = new Dictionary<string, object>();
         foreach (var kv in models.LoadedHashes) modelHashes[kv.Key] = kv.Value;
@@ -79,7 +87,7 @@ public static class SimWriter
         {
             { "op", op },
             { "sim_version", SimInfo.Version },
-            { "dynamics", "kinematic-3dof+synth-attitude" },
+            { "dynamics", dynamicsTag },
             { "manifest_sha256", manifestShaHex },
             { "seed", (long)seed },
             { "models", modelHashes },
