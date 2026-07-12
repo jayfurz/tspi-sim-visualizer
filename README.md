@@ -25,6 +25,9 @@ tspi append schemas/examples/runs/intercept-0042.tspi schemas/examples/addendum-
 tspi sweep schemas/examples/intercept.json --seeds 1:200 -j 10 --out-dir /tmp/sweep
 python3 -c "import json;print(sum(1 for l in open('/tmp/sweep/index.jsonl')))"
 
+# ...or fan a campaign across a cluster instead of one box:
+tspi sweep schemas/examples/intercept.json --seeds 1:10000 --emit slurm --out-dir /data/camp > run.sbatch
+
 # analysis (numpy, zero-copy mmap)
 pip install -e "tools/tspi_py[test]"
 python3 -c "
@@ -56,9 +59,14 @@ is O(1) per entity. See `unity/README.md` for georeferencing (Cesium) notes.
 ## Design invariants
 
 1. Simulation is headless & deterministic (fixed-step RK4, f64, per-entity RNG streams);
-   `manifest + models + seed + sim_version → byte-identical .tspi` (golden-locked in CI).
+   `manifest + models + seed + sim_version → byte-identical .tspi` on one platform
+   (golden-locked in CI; cross-platform is tolerance-based via `tspi diff --tol-m`). Runs
+   stream to disk as they integrate, so a sweep never buffers whole trajectories.
 2. Unity is a pure playback client through the same `Tspi.Core` reader.
-3. Appends never rewrite bytes: torn appends recover (`tspi recover`), live readers are
-   safe, and the footer chain keeps every historical index snapshot.
-4. Manifest evolution is additive (channel-based maneuvers, discriminated unions);
-   record evolution is by `layout` id extending a fixed 64-byte prefix.
+3. Appends never rewrite bytes: torn appends recover (`tspi recover`, fuzz-tested at every
+   truncation offset), live readers are safe, the footer chain keeps every historical index
+   snapshot, and the persisted environment lets appended munitions fly in the original air mass.
+4. Manifest evolution is additive (channel-based maneuvers, discriminated unions); record
+   evolution is by `layout` id extending a fixed 64-byte prefix (old readers skip unknown
+   layouts). Fidelity is kinematic 3-DoF + synthesized attitude, tagged in provenance — not
+   aero-moment 6-DoF.

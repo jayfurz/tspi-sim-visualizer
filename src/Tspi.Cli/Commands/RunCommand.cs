@@ -36,28 +36,26 @@ public static class RunCommand
                          ?? RelativeToManifest(path, ManifestJson.RenderTemplate(manifest.Output.TrajectoryFile, manifest.Name, manifest.Seed));
 
         var sw = Stopwatch.StartNew();
-        var result = SceneEngine.RunScenario(manifest, models);
         var shaBytes = ManifestJson.Sha256Bytes(raw);
-        SimWriter.WriteNew(outPath, result, shaBytes, shaHex, manifest.Seed, models);
+        // Streaming write: each entity's block goes to disk as it is integrated.
+        var summary = SceneEngine.RunScenarioToFile(manifest, models, outPath, shaBytes, shaHex);
         sw.Stop();
 
-        long samples = 0;
-        foreach (var e in result.Entities) samples += e.Traj.Count;
         double simSecPerWall = manifest.Scene.DurationS / System.Math.Max(1e-6, sw.Elapsed.TotalSeconds);
         if (!p.Switch("quiet"))
         {
             Console.WriteLine($"wrote {outPath}");
-            Console.WriteLine($"  {result.Entities.Count} entities, {samples:N0} samples, " +
+            Console.WriteLine($"  {summary.EntityCount} entities, {summary.SampleCount:N0} samples, " +
                               $"{new FileInfo(outPath).Length / 1024.0:N1} KiB");
-            Console.WriteLine($"  {result.Events.Count} events, seed {manifest.Seed}, " +
+            Console.WriteLine($"  {summary.Events.Count} events, seed {manifest.Seed}, " +
                               $"{sw.Elapsed.TotalMilliseconds:N0} ms ({simSecPerWall:N0}x real-time)");
-            foreach (var ev in result.Events)
-                Console.WriteLine($"    t={ev.TNs / 1e9,7:0.00}s  {ev.Kind}" + EventDetail(ev, result));
+            foreach (var ev in summary.Events)
+                Console.WriteLine($"    t={ev.TNs / 1e9,7:0.00}s  {ev.Kind}" + EventDetail(ev, summary));
         }
         return 0;
     }
 
-    private static string EventDetail(Tspi.Core.IO.TspiEventEntry ev, SimResult result)
+    private static string EventDetail(Tspi.Core.IO.TspiEventEntry ev, RunSummary result)
     {
         string src = ev.SrcOrd.HasValue && result.OrdToId.TryGetValue(ev.SrcOrd.Value, out var s) ? s : "";
         string dst = ev.DstOrd.HasValue && result.OrdToId.TryGetValue(ev.DstOrd.Value, out var d) ? d : "";

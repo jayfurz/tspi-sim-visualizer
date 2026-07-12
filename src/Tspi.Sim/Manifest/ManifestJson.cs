@@ -174,6 +174,10 @@ public static class ManifestValidator
             {
                 if (seg.AtS < 0) Err($"{where}: maneuver at_s must be >= 0");
                 if (seg.AtS > s.DurationS) Warn($"{where}: maneuver at t={seg.AtS}s starts after scenario end");
+                // Commands activate on the dt sample grid; an off-grid at_s is snapped to the
+                // next sample so RK4 never integrates across a mid-step command discontinuity.
+                if (s.DtS > 0 && System.Math.Abs(seg.AtS / s.DtS - System.Math.Round(seg.AtS / s.DtS)) > 1e-6)
+                    Warn($"{where}: maneuver at_s={seg.AtS}s is not a multiple of dt={s.DtS}s; it will snap to the next sample");
                 if (seg.Lateral is null && seg.Vertical is null && seg.Speed is null)
                     Warn($"{where}: maneuver at t={seg.AtS}s commands no channel (no-op)");
                 if (seg.Lateral is LateralTurnToHeading turn && turn.GLimit <= 0)

@@ -91,6 +91,14 @@ def test_provenance_chain(f):
     assert rec["seed"] == 12345
     assert len(rec["manifest_sha256"]) == 64
     assert "generic-fighter" in rec["models"]
+    # Honesty tag: aircraft dynamics are kinematic, not aero-moment 6-DoF.
+    assert rec["dynamics"] == "kinematic-3dof+synth-attitude"
+
+
+def test_environment_persisted(f):
+    # golden.json declares a vacuum atmosphere and no wind; it round-trips into the footer.
+    assert f.environment is not None
+    assert f.environment["atmosphere"] == "none"
 
 
 def test_times_are_implicit_fixed_dt(f):

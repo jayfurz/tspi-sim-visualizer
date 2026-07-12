@@ -117,6 +117,8 @@ class TspiFile:
             for v in self.footer.get("events", [])
         ]
         self.provenance = self.footer.get("provenance", [])
+        # Environment (atmosphere + wind) the producing scenario used; carried across appends.
+        self.environment = self.footer.get("environment")
 
     @property
     def dt_s(self) -> float:

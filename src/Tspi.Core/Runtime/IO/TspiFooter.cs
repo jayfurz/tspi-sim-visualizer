@@ -107,6 +107,12 @@ namespace Tspi.Core.IO
         public List<TspiEventEntry> Events = new List<TspiEventEntry>();
         /// <summary>Freeform provenance records; one per write/append (sim_version, seed, hashes...).</summary>
         public List<Dictionary<string, object>> Provenance = new List<Dictionary<string, object>>();
+        /// <summary>
+        /// Opaque environment descriptor (atmosphere + wind) the producing scenario used.
+        /// Carried forward across appends so later munitions fly in the same air mass as
+        /// the original run. Null if the producer recorded none.
+        /// </summary>
+        public Dictionary<string, object> Environment;
         public long? PrevFooterOffset;
         public long? PrevFooterLen;
 
@@ -124,6 +130,7 @@ namespace Tspi.Core.IO
                 { "entities", entities },
                 { "events", events },
                 { "provenance", provenance },
+                { "environment", Environment },
                 { "prev_footer_offset", PrevFooterOffset.HasValue ? (object)PrevFooterOffset.Value : null },
                 { "prev_footer_len", PrevFooterLen.HasValue ? (object)PrevFooterLen.Value : null },
             };
@@ -148,6 +155,8 @@ namespace Tspi.Core.IO
             if (root.TryGetValue("provenance", out object prov) && prov is List<object> pl)
                 foreach (var item in pl)
                     f.Provenance.Add((Dictionary<string, object>)item);
+            if (root.TryGetValue("environment", out object envv) && envv is Dictionary<string, object> ed)
+                f.Environment = ed;
             f.PrevFooterOffset = JsonUtil.TryGetLong(root, "prev_footer_offset", out long po) ? (long?)po : null;
             f.PrevFooterLen = JsonUtil.TryGetLong(root, "prev_footer_len", out long pn) ? (long?)pn : null;
             return f;

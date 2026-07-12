@@ -106,15 +106,20 @@ and additive evolution are worth it. Unknown keys must be ignored by readers.
     { "t_ns": 22810000000, "kind": "launch", "src": 2, "dst": 1, "data": {} }
   ],
   "provenance": [
-    { "op": "run", "sim_version": "0.1.0", "manifest_sha256": "…", "seed": 42, "models": { "generic-fighter": "…" } }
+    { "op": "run", "sim_version": "0.1.0", "dynamics": "kinematic-3dof+synth-attitude",
+      "manifest_sha256": "…", "seed": 42, "models": { "generic-fighter": "…" } }
   ],
+  "environment": { "atmosphere": "exp8500", "wind": { "layers": [ … ], "gusts": { … } } },
   "prev_footer_offset": null,
   "prev_footer_len": null
 }
 ```
 
 `src`/`dst` reference entity `ord`. Event `kind`s in v1: `launch`, `cpa`, `intercept`,
-`ground_impact`, `expire`. `miss_m` (closest-approach distance) rides in `data`.
+`ground_impact`, `expire`. `miss_m` (sub-dt refined closest-approach distance) rides in
+`data`. `environment` records the atmosphere + wind the run used and is carried forward
+across appends, so a later `tspi append` flies its munitions in the same air mass. The
+`dynamics` provenance tag marks the fidelity level (kinematic, not aero-moment 6-DoF).
 
 ## Trailer (32 bytes, always the last 32 bytes of the file)
 
@@ -141,7 +146,10 @@ truncate the file just past it. `tspi recover <file> --apply` does this.
 
 ## Determinism contract
 
-`manifest + models + seed + sim_version` → **byte-identical** file on the same platform.
-The `GoldenFileTests` and `tspi diff` enforce it. Changing the record layout, the sim
-math, or the serialization is a deliberate act: bump `version` (format) or `sim_version`
-and regenerate `tools/tspi_py/tests/data/golden-v1.tspi`.
+`manifest + models + seed + sim_version` → **byte-identical** file **on the same
+platform** (enforced by `DeterminismTests` and the golden byte-lock). The streaming and
+buffered writers are byte-for-byte equivalent, so the guarantee holds regardless of which
+write path produced the file. Cross-platform output is *not* bit-exact — see
+docs/CONVENTIONS.md; use `tspi diff --tol-m` for portable comparison. Changing the record
+layout, the sim math, or the serialization is a deliberate act: bump `version` (format) or
+`sim_version` and regenerate `tools/tspi_py/tests/data/golden-v1.tspi`.

@@ -24,25 +24,24 @@ namespace Tspi.Core.IO
     /// </summary>
     public static class TspiFile
     {
+        /// <summary>
+        /// Buffer whole blocks then write. Convenience for callers (mostly tests) that
+        /// already hold full record lists; the sim uses <see cref="TspiStreamWriter"/> to
+        /// stream records without a second full copy in memory.
+        /// </summary>
         public static void WriteNew(string path, TspiHeader header, IReadOnlyList<TspiEntityBlock> blocks,
-            IReadOnlyList<TspiEventEntry> events, IReadOnlyList<Dictionary<string, object>> provenance)
+            IReadOnlyList<TspiEventEntry> events, IReadOnlyList<Dictionary<string, object>> provenance,
+            Dictionary<string, object> environment = null)
         {
-            TspiFormat.RequireLittleEndian();
             RequireUniqueOrds(blocks.Select(b => b.Meta.Ord));
-            string dir = Path.GetDirectoryName(Path.GetFullPath(path));
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var w = new TspiStreamWriter(path, header))
             {
-                header.WriteTo(fs);
                 foreach (var block in blocks)
-                    WriteBlock(fs, block);
-                var footer = new TspiFooter();
-                footer.Entities.AddRange(blocks.Select(b => b.Meta));
-                if (events != null) footer.Events.AddRange(events);
-                footer.Events = footer.Events.OrderBy(e => e.TNs).ToList();
-                if (provenance != null) footer.Provenance.AddRange(provenance);
-                WriteFooterAndTrailer(fs, footer);
-                fs.Flush(true);
+                    w.WriteBlock(block.Meta, block.Records, block.Records.Count);
+                if (events != null) w.AddEvents(events);
+                if (provenance != null) foreach (var p in provenance) w.AddProvenance(p);
+                if (environment != null) w.SetEnvironment(environment);
+                w.Finish();
             }
         }
 
@@ -62,7 +61,7 @@ namespace Tspi.Core.IO
 
                 fs.Seek(0, SeekOrigin.End);
                 foreach (var block in blocks)
-                    WriteBlock(fs, block);
+                    WriteBlockStreaming(fs, block.Meta, block.Records, block.Records.Count);
 
                 footer.Entities.AddRange(blocks.Select(b => b.Meta));
                 if (newEvents != null) footer.Events.AddRange(newEvents);
@@ -85,12 +84,18 @@ namespace Tspi.Core.IO
                     throw new InvalidOperationException("Duplicate entity ord " + o);
         }
 
-        private static void WriteBlock(Stream fs, TspiEntityBlock block)
+        /// <summary>
+        /// Write one entity block, streaming records through a fixed chunk buffer so a
+        /// full second copy of the trajectory is never materialized. <paramref name="count"/>
+        /// is authoritative (trajectories know their length up front), so no count patching
+        /// is needed and the bytes are identical to a buffered write.
+        /// </summary>
+        internal static void WriteBlockStreaming(Stream fs, TspiEntityEntry meta,
+            IEnumerable<TspiRecord> records, long count)
         {
-            var meta = block.Meta;
             meta.Stride = TspiFormat.StrideSixDofV1;
             meta.Layout = TspiFormat.LayoutSixDofV1;
-            meta.SampleCount = block.Records.Count;
+            meta.SampleCount = count;
 
             var w = new BinaryWriter(fs);
             w.Write(TspiFormat.BlockMagic);
@@ -99,16 +104,36 @@ namespace Tspi.Core.IO
             w.Write((ushort)meta.Stride);
             w.Write(0u); // reserved
             w.Write(meta.T0Ns);
-            w.Write((ulong)block.Records.Count);
+            w.Write((ulong)count);
             w.Flush();
 
             meta.DataOffset = fs.Position;
-            TspiRecord[] records = block.Records.ToArray();
-            ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(new ReadOnlySpan<TspiRecord>(records));
-            fs.Write(bytes);
+
+            const int chunk = 8192;
+            var buf = new TspiRecord[chunk];
+            int n = 0;
+            long written = 0;
+            foreach (var rec in records)
+            {
+                buf[n++] = rec;
+                if (n == chunk)
+                {
+                    fs.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<TspiRecord>(buf, 0, n)));
+                    written += n;
+                    n = 0;
+                }
+            }
+            if (n > 0)
+            {
+                fs.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<TspiRecord>(buf, 0, n)));
+                written += n;
+            }
+            if (written != count)
+                throw new InvalidOperationException(
+                    $"block '{meta.Id}' declared {count} samples but streamed {written}");
         }
 
-        private static void WriteFooterAndTrailer(Stream fs, TspiFooter footer)
+        internal static void WriteFooterAndTrailer(Stream fs, TspiFooter footer)
         {
             byte[] json = Encoding.UTF8.GetBytes(footer.ToJsonString());
             long footerOffset = fs.Position;

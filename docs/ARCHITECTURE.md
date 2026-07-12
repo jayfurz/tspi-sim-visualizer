@@ -36,11 +36,18 @@ models/*.json ──────────────────────
 
 ## Fidelity level (deliberate, documented)
 
+**This is a kinematic 3-DoF-plus-attitude simulator, not aero-moment 6-DoF.** The
+`.tspi` record stores full 6-DoF-shaped state (quaternion + body rates), but attitude is
+*synthesized* from the flight path and rates are derived, not integrated from a rotational
+equation of motion. Every produced file is stamped with `dynamics:
+"kinematic-3dof+synth-attitude"` in its provenance so consumers know exactly what the
+6-DoF-shaped records represent. A true rigid-body rotational integrator can replace
+`AircraftDynamics`/`MunitionDynamics` behind the same interface without touching the format.
+
 - Aircraft: **kinematic autopilot** — point-mass translation driven by three channel
   commands (lateral turn-to-heading with g-limit, vertical rate/altitude capture, speed
-  hold/set), attitude synthesized from flight path + coordinated-turn bank. Lift
-  implicitly balances gravity. NOT aero-moment 6DOF; a higher-fidelity model can replace
-  `AircraftDynamics` behind the same channel interface.
+  hold/set), attitude synthesized from flight path + coordinated-turn bank, body rates
+  finite-differenced from that attitude. Lift implicitly balances gravity.
 - Munitions: point-mass with boost thrust along velocity, quadratic drag against the air
   mass (exp-atmosphere), gravity, and true proportional navigation with a g-limit;
   attitude aligned to velocity. All model parameters are **notional** — keep real
@@ -54,8 +61,22 @@ models/*.json ──────────────────────
 
 Guided munitions terminate at fuze radius (`intercept`) or at closest approach
 (`cpa` + miss distance) once range starts opening; unguided ones fly to `ground_impact`
-or `expire`. Events carry interpolable timestamps and entity ords; kill *adjudication*
-(Pk) is deliberately out of scope — do it in Python over the recorded CPA data.
+or `expire`. Closest approach is refined to **sub-dt precision** (a fine scan plus a
+parabolic polish over the smoothly-interpolable missile and target tracks), because CPA
+almost never lands on a sample boundary and the reported miss distance is the number the
+whole campaign turns on. Events carry interpolable timestamps and entity ords; kill
+*adjudication* (Pk) is deliberately out of scope — do it in Python over the recorded CPA data.
+
+## Determinism scope
+
+Same machine, same `manifest + models + seed + sim_version` → **byte-identical** output,
+enforced by `DeterminismTests` (always on) and the golden byte-lock. Across *different*
+platforms, floating-point and transcendental differences mean bit-exactness is **not**
+guaranteed: the golden byte-lock is a reference-platform check (CI on Linux/x64), and
+cross-platform reproducibility is tolerance-based via `tspi diff --tol-m`. Treat one
+platform as canonical for a campaign, or compare with a tolerance. A large campaign that
+must be bit-reproducible across heterogeneous nodes would need a fixed-precision math
+path — out of scope for v1, and called out here rather than hidden.
 
 ## Repo map
 

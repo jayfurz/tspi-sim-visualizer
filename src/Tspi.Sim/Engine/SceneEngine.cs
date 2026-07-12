@@ -17,6 +17,28 @@ public sealed class SimResult
     public double DtSec;
     public OriginLla Origin = new();
     public Dictionary<uint, string> OrdToId = new();
+    /// <summary>Opaque environment descriptor persisted into the file footer (null if none).</summary>
+    public Dictionary<string, object>? EnvironmentJson;
+}
+
+/// <summary>Lightweight result of a streamed run — no trajectories retained (they were written and dropped).</summary>
+public sealed class RunSummary
+{
+    public int EntityCount;
+    public long SampleCount;
+    public List<TspiEventEntry> Events = new();
+    public Dictionary<uint, string> OrdToId = new();
+}
+
+/// <summary>One produced entity: identity + trajectory + its events. The single source of
+/// truth for ordering/ord assignment, consumed by both the in-memory and streaming paths.</summary>
+internal struct Produced
+{
+    public string Id, Team, Type, Model;
+    public uint Ord;
+    public uint? ParentOrd;
+    public Trajectory Traj;
+    public List<TspiEventEntry> Events;
 }
 
 /// <summary>
@@ -27,6 +49,7 @@ public sealed class SimResult
 /// </summary>
 public static class SceneEngine
 {
+    /// <summary>Run a scenario fully into memory (used by tests and small in-process consumers).</summary>
     public static SimResult RunScenario(ScenarioManifest m, ModelLibrary models)
     {
         double dt = m.Scene.DtS;
@@ -36,10 +59,77 @@ public static class SceneEngine
             EpochUnixNs = ParseEpochNs(m.Scene.Epoch),
             DtSec = dt,
             Origin = m.Scene.OriginLla,
+            EnvironmentJson = EnvironmentSerialization.ToJson(m.Scene.Environment),
         };
         var env = new Environment(m.Scene);
+        foreach (var p in Produce(m, models, env, dt, steps))
+        {
+            result.OrdToId[p.Ord] = p.Id;
+            result.Entities.Add(new EntityTrajectory
+            {
+                Id = p.Id, Team = p.Team, Type = p.Type, Model = p.Model, ParentOrd = p.ParentOrd, Traj = p.Traj,
+            });
+            result.Events.AddRange(p.Events);
+        }
+        result.Events = result.Events.OrderBy(ev => ev.TNs).ToList();
+        return result;
+    }
 
-        // Ord assignment: aircraft in declaration order, then munitions.
+    /// <summary>
+    /// Run a scenario streaming each entity's block straight to <paramref name="path"/> as it
+    /// is integrated, so munition trajectories are written and dropped rather than all held at
+    /// once. Aircraft tracks stay resident (munitions guide against them); a fully-streaming
+    /// sim would re-read them from the file via mmap, at the cost of a second footer.
+    /// </summary>
+    public static RunSummary RunScenarioToFile(ScenarioManifest m, ModelLibrary models, string path,
+        byte[] manifestSha256Bytes, string manifestShaHex)
+    {
+        double dt = m.Scene.DtS;
+        int steps = (int)System.Math.Round(m.Scene.DurationS / dt);
+        var env = new Environment(m.Scene);
+        var header = new TspiHeader
+        {
+            DtNs = (ulong)SecToNs(dt),
+            EpochUnixNs = ParseEpochNs(m.Scene.Epoch),
+            OriginLatDeg = m.Scene.OriginLla.LatDeg,
+            OriginLonDeg = m.Scene.OriginLla.LonDeg,
+            OriginAltM = m.Scene.OriginLla.AltM,
+            ManifestSha256 = manifestSha256Bytes,
+        };
+        var summary = new RunSummary();
+        using (var w = new TspiStreamWriter(path, header))
+        {
+            foreach (var p in Produce(m, models, env, dt, steps))
+            {
+                var meta = new TspiEntityEntry
+                {
+                    Ord = p.Ord, Id = p.Id, Team = p.Team, Type = p.Type, Model = p.Model,
+                    ParentOrd = p.ParentOrd, T0Ns = SecToNs(p.Traj.T0Sec),
+                };
+                w.WriteBlock(meta, p.Traj.EnumerateRecords(), p.Traj.Count);
+                w.AddEvents(p.Events);
+                summary.OrdToId[p.Ord] = p.Id;
+                summary.Events.AddRange(p.Events);
+                summary.SampleCount += p.Traj.Count;
+                summary.EntityCount++;
+                // p.Traj is now GC-eligible if it was a munition; aircraft are retained by Produce.
+            }
+            w.SetEnvironment(EnvironmentSerialization.ToJson(m.Scene.Environment));
+            w.AddProvenance(SimWriter.ProvenanceRecord(manifestShaHex, m.Seed, models, "run"));
+            w.Finish();
+        }
+        summary.Events = summary.Events.OrderBy(ev => ev.TNs).ToList();
+        return summary;
+    }
+
+    /// <summary>
+    /// Ordering + ord assignment, shared by both run paths: aircraft in declaration order
+    /// (ords 0..n-1), then munitions (ords n..). Aircraft tracks are retained internally so
+    /// munitions can guide against them regardless of what the consumer does with each yield.
+    /// </summary>
+    private static IEnumerable<Produced> Produce(ScenarioManifest m, ModelLibrary models, Environment env,
+        double dt, int steps)
+    {
         uint nextOrd = 0;
         var aircraftTracks = new Dictionary<string, Trajectory>();
         var aircraftOrd = new Dictionary<string, uint>();
@@ -51,14 +141,13 @@ public static class SceneEngine
             uint ord = nextOrd++;
             aircraftTracks[e.Id] = traj;
             aircraftOrd[e.Id] = ord;
-            result.OrdToId[ord] = e.Id;
-            result.Entities.Add(new EntityTrajectory
+            yield return new Produced
             {
-                Id = e.Id, Team = e.Team, Type = e.Type, Model = e.Model, ParentOrd = null, Traj = traj,
-            });
+                Id = e.Id, Team = e.Team, Type = e.Type, Model = e.Model, Ord = ord, ParentOrd = null,
+                Traj = traj, Events = new List<TspiEventEntry>(),
+            };
         }
 
-        // Munitions.
         foreach (var e in m.Entities)
         {
             foreach (var mun in e.Munitions)
@@ -75,18 +164,13 @@ public static class SceneEngine
                     mun, mmodel!, env, m.Seed, dt, launchT.Value,
                     parentTrack, targetTrack,
                     ord, aircraftOrd[mun.Target], m.Scene.OriginLla.AltM, m.Scene.DurationS);
-                result.OrdToId[ord] = mun.Id;
-                result.Entities.Add(new EntityTrajectory
+                yield return new Produced
                 {
-                    Id = mun.Id, Team = e.Team, Type = "munition", Model = mun.Model,
-                    ParentOrd = aircraftOrd[e.Id], Traj = traj,
-                });
-                result.Events.AddRange(events);
+                    Id = mun.Id, Team = e.Team, Type = "munition", Model = mun.Model, Ord = ord,
+                    ParentOrd = aircraftOrd[e.Id], Traj = traj, Events = events,
+                };
             }
         }
-
-        result.Events = result.Events.OrderBy(ev => ev.TNs).ToList();
-        return result;
     }
 
     /// <summary>
@@ -112,8 +196,12 @@ public static class SceneEngine
                 AltM = reader.Header.OriginAltM,
             },
         };
-        var scene = new SceneSpec { DtS = dt, DurationS = durationS, OriginLla = result.Origin };
-        var env = new Environment(scene); // recorded files carry no wind spec; addendum flies in still air unless extended
+        // Reconstruct the air mass the original run flew in (persisted in the footer),
+        // so appended munitions feel the same wind/atmosphere rather than still air.
+        var envSpec = EnvironmentSerialization.FromJson(reader.Footer.Environment);
+        var scene = new SceneSpec { DtS = dt, DurationS = durationS, OriginLla = result.Origin, Environment = envSpec };
+        var env = new Environment(scene);
+        result.EnvironmentJson = reader.Footer.Environment;
 
         uint nextOrd = 0;
         foreach (var e in reader.Entities) nextOrd = System.Math.Max(nextOrd, e.Ord + 1);
@@ -229,8 +317,6 @@ public static class SceneEngine
         });
 
         double prevRange = double.MaxValue;
-        double bestRange = double.MaxValue;
-        double bestRangeT = launchSec;
         string terminal = "expire";
         double endT = System.Math.Min(durationS, launchSec + model.MaxFlightTimeS);
 
@@ -244,37 +330,49 @@ public static class SceneEngine
             var att = dyn.Attitude(state);
             traj.Add(state.Pos, state.Vel, att);
 
-            if (range < bestRange) { bestRange = range; bestRangeT = t; }
-
             // Endgame termination applies only to guided munitions; an unguided
             // projectile is not "intercepting" and flies until ground/expire.
             if (dyn.Guided)
             {
-                // Fuze: intercept when inside lethal radius.
+                // Fuze: intercept when inside lethal radius. Refine the closest point to
+                // sub-dt precision — CPA almost never lands on a sample boundary, and the
+                // reported miss distance is the number the whole campaign turns on.
                 if (range <= model.FuzeRadiusM)
                 {
                     terminal = "intercept";
-                    events.Add(MakeCpa(ord, targetOrd, t, range));
-                    events.Add(new TspiEventEntry { TNs = SecToNs(t), Kind = "intercept", SrcOrd = ord, DstOrd = targetOrd,
-                        Data = new Dictionary<string, object> { { "miss_m", System.Math.Round(range, 3) } } });
+                    var (tStar, missStar) = RefineCpa(traj, targetTrack, System.Math.Max(launchSec, t - dt), t);
+                    events.Add(MakeCpa(ord, targetOrd, tStar, missStar));
+                    events.Add(new TspiEventEntry { TNs = SecToNs(tStar), Kind = "intercept", SrcOrd = ord, DstOrd = targetOrd,
+                        Data = new Dictionary<string, object> { { "miss_m", System.Math.Round(missStar, 3) } } });
                     break;
                 }
-                // CPA passed (range began increasing after closing): record miss, terminate.
+                // CPA passed (range began increasing after closing): the minimum lies in the
+                // last two intervals; refine it sub-dt and record the miss.
                 if (range > prevRange && guard > 2)
                 {
                     terminal = "miss";
-                    events.Add(MakeCpa(ord, targetOrd, bestRangeT, bestRange));
+                    var (tStar, missStar) = RefineCpa(traj, targetTrack, System.Math.Max(launchSec, t - 2 * dt), t);
+                    events.Add(MakeCpa(ord, targetOrd, tStar, missStar));
                     break;
                 }
                 prevRange = range;
             }
 
-            // Ground impact (flat-earth MSL at origin altitude).
+            // Ground impact (flat-earth MSL at origin altitude). Interpolate the crossing
+            // time between the previous (above-ground) and current (at/below) samples.
             double altMsl = originAltM - state.Pos.Z;
             if (altMsl <= 0.0 && t > launchSec)
             {
+                double tImpact = t;
+                int k = traj.Count - 1;
+                if (k >= 1)
+                {
+                    double prevAlt = originAltM - traj.Pos[k - 1].Z;
+                    double denom = prevAlt - altMsl;
+                    if (denom > 1e-9) tImpact = (t - dt) + dt * (prevAlt / denom);
+                }
                 terminal = "ground_impact";
-                events.Add(new TspiEventEntry { TNs = SecToNs(t), Kind = "ground_impact", SrcOrd = ord });
+                events.Add(new TspiEventEntry { TNs = SecToNs(tImpact), Kind = "ground_impact", SrcOrd = ord });
                 break;
             }
 
@@ -303,6 +401,45 @@ public static class SceneEngine
         TNs = SecToNs(tSec), Kind = "cpa", SrcOrd = ord, DstOrd = targetOrd,
         Data = new Dictionary<string, object> { { "miss_m", System.Math.Round(rangeM, 3) } },
     };
+
+    /// <summary>
+    /// Sub-dt closest point of approach over [tA, tB]. Both tracks are smoothly
+    /// interpolable (missile via its recorded Hermite segment, target via its track),
+    /// so a fine scan plus a parabolic polish recovers the true minimum range and its
+    /// time to well under a millimeter for typical closing speeds.
+    /// </summary>
+    private static (double tStar, double missM) RefineCpa(Trajectory mun, ITargetTrack tgt, double tA, double tB)
+    {
+        if (tB <= tA) { double r = (tgt.SampleAt(tB).Pos - mun.SampleAt(tB).Pos).Length; return (tB, r); }
+        const int n = 64;
+        double h = (tB - tA) / n;
+        double Range(double t) => (tgt.SampleAt(t).Pos - mun.SampleAt(t).Pos).Length;
+        double bestT = tA, best = double.MaxValue;
+        int bestI = 0;
+        for (int i = 0; i <= n; i++)
+        {
+            double t = tA + h * i;
+            double r = Range(t);
+            if (r < best) { best = r; bestT = t; bestI = i; }
+        }
+        // Parabolic polish using the neighbors of the best grid point.
+        if (bestI > 0 && bestI < n)
+        {
+            double r0 = Range(bestT - h), r1 = best, r2 = Range(bestT + h);
+            double denom = r0 - 2 * r1 + r2;
+            if (denom > 1e-12)
+            {
+                double x = 0.5 * (r0 - r2) / denom;             // fractional offset in [-1,1]
+                if (x > -1 && x < 1)
+                {
+                    double tStar = bestT + x * h;
+                    double missStar = r1 - 0.125 * (r0 - r2) * (r0 - r2) / denom;
+                    return (tStar, System.Math.Max(0.0, missStar));
+                }
+            }
+        }
+        return (bestT, best);
+    }
 
     // ---------------- launch resolution ----------------
 

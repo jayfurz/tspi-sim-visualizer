@@ -46,4 +46,11 @@ are); a big-endian port would byte-swap at the I/O boundary only.
 - One **RNG stream per (seed, purpose, entity-id)** (SplitMix64), so adding an entity
   never perturbs another entity's draws.
 - Fixed-step RK4, f64 integrator state and stored positions.
-- Same manifest + models + seed + sim version → byte-identical output.
+- Maneuver commands activate on the dt sample grid, so RK4 never integrates across a
+  mid-step command discontinuity (an off-grid `at_s` snaps to the next sample, with a
+  validator warning).
+- **Same-platform:** same manifest + models + seed + sim version → byte-identical output.
+- **Cross-platform:** NOT bit-exact (floating-point/transcendental divergence). The golden
+  byte-lock is a reference-platform check; use `tspi diff --tol-m` for portable comparison.
+  Persisted environment (atmosphere + wind) travels in the footer so a later `tspi append`
+  reproduces the same air mass rather than flying in still air.

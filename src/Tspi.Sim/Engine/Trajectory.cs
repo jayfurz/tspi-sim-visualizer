@@ -68,6 +68,37 @@ public sealed class Trajectory
         return records;
     }
 
+    /// <summary>
+    /// Lazily yield fixed-stride records with sign continuity applied on the fly, so the
+    /// streaming writer never materializes a second full copy of the trajectory.
+    /// Equivalent output to <see cref="ToRecords"/>.
+    /// </summary>
+    public IEnumerable<TspiRecord> EnumerateRecords()
+    {
+        bool hasPrev = false;
+        float pw = 0, px = 0, py = 0, pz = 0;
+        for (int i = 0; i < Count; i++)
+        {
+            Vec3d omega;
+            if (Count == 1) omega = Vec3d.Zero;
+            else if (i < Count - 1) omega = QuatD.BodyRates(Att[i], Att[i + 1], DtSec);
+            else omega = QuatD.BodyRates(Att[i - 1], Att[i], DtSec);
+            var rec = TspiRecord.From(Pos[i], Vel[i], Att[i].Normalized(), omega);
+            if (hasPrev)
+            {
+                double dot = pw * rec.QuatW + px * rec.QuatX + py * rec.QuatY + pz * rec.QuatZ;
+                if (dot < 0)
+                {
+                    rec.QuatW = -rec.QuatW; rec.QuatX = -rec.QuatX;
+                    rec.QuatY = -rec.QuatY; rec.QuatZ = -rec.QuatZ;
+                }
+            }
+            pw = rec.QuatW; px = rec.QuatX; py = rec.QuatY; pz = rec.QuatZ;
+            hasPrev = true;
+            yield return rec;
+        }
+    }
+
     /// <summary>Flip signs so dot(q_i, q_i+1) >= 0 — playback slerp then never takes the long path.</summary>
     private static void EnforceQuatSignContinuity(List<TspiRecord> recs)
     {

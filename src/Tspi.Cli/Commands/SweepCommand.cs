@@ -46,6 +46,13 @@ public static class SweepCommand
 
         var seeds = new List<ulong>();
         for (ulong s = lo; s <= hi; s++) seeds.Add(s);
+
+        // Cluster fan-out: emit a job script/list instead of running in-process, so the
+        // campaign can span nodes (in-process Parallel.ForEach is single-node only).
+        string? emit = p.Option("emit");
+        if (emit != null)
+            return EmitJobs(emit, path, baseManifest.Name, lo, hi, outDir, p.Option("models"));
+
         Console.WriteLine($"sweep '{baseManifest.Name}': {seeds.Count} runs on {jobs} workers -> {outDir}");
 
         var sw = Stopwatch.StartNew();
@@ -62,9 +69,8 @@ public static class SweepCommand
             var localModels = CliCommon.Models(p.Option("models"), path);
             string outPath = Path.Combine(outDir,
                 ManifestJson.RenderTemplate("{name}-{seed:06}.tspi", manifest.Name, seed));
-            var result = SceneEngine.RunScenario(manifest, localModels);
-            SimWriter.WriteNew(outPath, result, shaBytes, shaHex, seed, localModels);
-            indexLines[seed] = IndexLine(seed, outPath, result);
+            var summary = SceneEngine.RunScenarioToFile(manifest, localModels, outPath, shaBytes, shaHex);
+            indexLines[seed] = IndexLine(seed, outPath, summary);
             int d = System.Threading.Interlocked.Increment(ref done);
             if (!p.Switch("quiet") && (d % System.Math.Max(1, seeds.Count / 20) == 0 || d == seeds.Count))
                 Console.WriteLine($"  {d}/{seeds.Count} ({100.0 * d / seeds.Count:0}%)");
@@ -81,7 +87,36 @@ public static class SweepCommand
         return 0;
     }
 
-    private static string IndexLine(ulong seed, string path, SimResult result)
+    private static int EmitJobs(string kind, string manifestPath, string name, ulong lo, ulong hi,
+        string outDir, string? modelsOpt)
+    {
+        string manifest = Path.GetFullPath(manifestPath);
+        string models = modelsOpt != null ? $" --models {modelsOpt}" : "";
+        string outTmpl = Path.Combine(outDir, $"{name}-$SEED.tspi");
+        switch (kind)
+        {
+            case "list":
+                // One `tspi run` invocation per seed for GNU parallel / xargs.
+                for (ulong s = lo; s <= hi; s++)
+                    Console.WriteLine($"tspi run {manifest} --seed {s} -o " +
+                                      Path.Combine(outDir, $"{name}-{s:D6}.tspi") + models + " --quiet");
+                return 0;
+            case "slurm":
+                Console.WriteLine("#!/bin/bash");
+                Console.WriteLine($"#SBATCH --job-name=tspi-{name}");
+                Console.WriteLine($"#SBATCH --array={lo}-{hi}");
+                Console.WriteLine("#SBATCH --ntasks=1 --cpus-per-task=1");
+                Console.WriteLine($"#SBATCH --output={Path.Combine(outDir, "slurm-%a.out")}");
+                Console.WriteLine("SEED=$SLURM_ARRAY_TASK_ID");
+                Console.WriteLine($"tspi run {manifest} --seed $SEED -o " +
+                                  Path.Combine(outDir, $"{name}-$SEED.tspi") + models + " --quiet");
+                return 0;
+            default:
+                throw new CliError("--emit must be 'list' or 'slurm'");
+        }
+    }
+
+    private static string IndexLine(ulong seed, string path, RunSummary result)
     {
         // Outcome summary: best miss distance per intercept attempt.
         double? minMiss = null;
@@ -104,7 +139,7 @@ public static class SweepCommand
         {
             { "seed", (long)seed },
             { "file", Path.GetFileName(path) },
-            { "entities", (long)result.Entities.Count },
+            { "entities", (long)result.EntityCount },
             { "min_miss_m", minMiss.HasValue ? (object)minMiss.Value : null },
             { "events", outcomes },
         };
