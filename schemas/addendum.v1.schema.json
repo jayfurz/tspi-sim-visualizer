@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tspi-sim.local/schemas/addendum.v1.schema.json",
+  "title": "tspi-addendum/1",
+  "description": "Munitions simulated later against recorded trajectories and appended to an existing .tspi (O(new samples)).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "munitions"],
+  "properties": {
+    "schema": { "const": "tspi-addendum/1" },
+    "seed": { "type": "integer", "minimum": 0, "default": 0 },
+    "munitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["parent", "id", "model", "target", "launch"],
+        "properties": {
+          "parent": { "type": "string", "minLength": 1, "description": "Recorded entity id that launches this munition" },
+          "id": { "type": "string", "minLength": 1 },
+          "model": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1, "description": "Recorded entity id to fly against" },
+          "launch": { "$ref": "scenario.v1.schema.json#/$defs/launch" },
+          "guidance": { "$ref": "scenario.v1.schema.json#/$defs/munition/properties/guidance" }
+        }
+      }
+    }
+  }
+}

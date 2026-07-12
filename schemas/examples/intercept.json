@@ -1,0 +1,69 @@
+{
+  "schema": "tspi-scenario/1",
+  "name": "intercept",
+  "seed": 42,
+  "scene": {
+    "origin_lla": { "lat_deg": 34.9061, "lon_deg": -117.8839, "alt_m": 700.0 },
+    "epoch": "2026-07-11T17:00:00Z",
+    "duration_s": 70.0,
+    "dt_s": 0.01,
+    "environment": {
+      "atmosphere": "exp8500",
+      "wind": {
+        "layers": [
+          { "alt_msl_m": 0,     "from_deg": 270, "speed_mps": 4 },
+          { "alt_msl_m": 9000,  "from_deg": 250, "speed_mps": 22 }
+        ],
+        "gusts": { "model": "gauss_markov", "sigma_mps": 1.5, "tau_s": 5.0 }
+      }
+    }
+  },
+  "output": { "trajectory_file": "runs/{name}-{seed:04}.tspi" },
+  "entities": [
+    {
+      "id": "blue-01",
+      "team": "blue",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": {
+        "pos_ned_m": [0, 0, -8000],
+        "vel_ned_mps": [300, 0, 0],
+        "att_ypr_deg": [0, 0, 0]
+      },
+      "maneuvers": [
+        { "at_s": 0.0,  "speed": { "kind": "set", "speed_mps": 320, "accel_mps2": 8 } },
+        { "at_s": 30.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 20, "g_limit": 4 } }
+      ],
+      "munitions": [
+        {
+          "id": "blue-01-aam-1",
+          "model": "generic-aam",
+          "target": "red-01",
+          "launch": { "when": "range_to_target", "less_than_m": 35000 },
+          "guidance": { "kind": "pronav", "gain": 4.0 }
+        }
+      ]
+    },
+    {
+      "id": "red-01",
+      "team": "red",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": {
+        "pos_ned_m": [46000, 3000, -8000],
+        "vel_ned_mps": [-260, 0, 0]
+      },
+      "dispersions": {
+        "pos_ned_sigma_m": [800, 800, 150],
+        "vel_ned_sigma_mps": [15, 15, 3]
+      },
+      "maneuvers": [
+        {
+          "at_s": 8.0,
+          "lateral": { "kind": "turn_to_heading", "heading_deg": 110, "g_limit": 5 },
+          "vertical": { "kind": "delta_alt", "delta_m": -2500, "rate_mps": 45 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+
+namespace Tspi.Sim.Models;
+
+/// <summary>
+/// Data-driven vehicle model (tspi-model/1). All parameters are NOTIONAL —
+/// keep them generic; real aero/performance data does not belong in this repo.
+/// Aircraft use the g/accel limits; munitions use boost/drag/guidance/endgame.
+/// </summary>
+public sealed class VehicleModel
+{
+    public string Schema { get; set; } = "";
+    /// <summary>"aircraft" | "munition"</summary>
+    public string Kind { get; set; } = "";
+    public double MassKg { get; set; } = 1000;
+
+    // aircraft envelope
+    public double GLimitMax { get; set; } = 9.0;
+    public double AccelLongMaxMps2 { get; set; } = 6.0;
+    public double AccelVertMaxMps2 { get; set; } = 30.0;
+    public double SpeedMaxMps { get; set; } = 600.0;
+
+    // munition
+    public BoostSpec? Boost { get; set; }
+    public double DragCdaM2 { get; set; }
+    public double PronavGainDefault { get; set; } = 4.0;
+    public double FuzeRadiusM { get; set; } = 10.0;
+    public double MaxFlightTimeS { get; set; } = 120.0;
+
+    public const string SchemaId = "tspi-model/1";
+}
+
+public sealed class BoostSpec
+{
+    public double ThrustN { get; set; }
+    public double DurationS { get; set; }
+}
+
+/// <summary>
+/// Resolves model names to model files ({name}.json across search dirs, first hit wins)
+/// and records each loaded file's SHA-256 for the provenance chain: "same manifest,
+/// same seed" only implies "same output" if the models are pinned too.
+/// </summary>
+public sealed class ModelLibrary
+{
+    private readonly List<string> _searchDirs;
+    private readonly Dictionary<string, (VehicleModel Model, string ShaHex)> _cache = new();
+    private readonly Dictionary<string, string> _errors = new();
+
+    public ModelLibrary(IEnumerable<string> searchDirs)
+    {
+        _searchDirs = new List<string>();
+        foreach (var d in searchDirs)
+            if (!string.IsNullOrEmpty(d) && Directory.Exists(d))
+                _searchDirs.Add(Path.GetFullPath(d));
+    }
+
+    public IReadOnlyList<string> SearchDirs => _searchDirs;
+
+    /// <summary>Hashes of every model resolved so far (name -> sha256 hex), for provenance.</summary>
+    public IReadOnlyDictionary<string, string> LoadedHashes
+    {
+        get
+        {
+            var d = new Dictionary<string, string>();
+            foreach (var kv in _cache) d[kv.Key] = kv.Value.ShaHex;
+            return d;
+        }
+    }
+
+    /// <summary>Register an in-memory model (tests, generated models). Hash is of its canonical JSON.</summary>
+    public void AddInMemory(string name, VehicleModel model)
+    {
+        byte[] canonical = JsonSerializer.SerializeToUtf8Bytes(model, Manifest.ManifestJson.Options);
+        _cache[name] = (model, Manifest.ManifestJson.Sha256Hex(canonical));
+    }
+
+    public bool TryResolve(string name, out VehicleModel? model, out string shaHex, out string error)
+    {
+        model = null;
+        shaHex = "";
+        error = "";
+        if (string.IsNullOrEmpty(name))
+        {
+            error = "empty model name";
+            return false;
+        }
+        if (_cache.TryGetValue(name, out var hit))
+        {
+            model = hit.Model;
+            shaHex = hit.ShaHex;
+            return true;
+        }
+        if (_errors.TryGetValue(name, out string? cachedError))
+        {
+            error = cachedError;
+            return false;
+        }
+        foreach (var dir in _searchDirs)
+        {
+            string path = Path.Combine(dir, name + ".json");
+            if (!File.Exists(path)) continue;
+            try
+            {
+                byte[] raw = File.ReadAllBytes(path);
+                var m = JsonSerializer.Deserialize<VehicleModel>(raw, Manifest.ManifestJson.Options)
+                        ?? throw new InvalidDataException("model file is JSON null");
+                if (m.Schema != VehicleModel.SchemaId)
+                    throw new InvalidDataException($"schema must be '{VehicleModel.SchemaId}' (got '{m.Schema}')");
+                if (m.Kind != "aircraft" && m.Kind != "munition")
+                    throw new InvalidDataException($"kind must be 'aircraft' or 'munition' (got '{m.Kind}')");
+                if (m.MassKg <= 0)
+                    throw new InvalidDataException("mass_kg must be > 0");
+                _cache[name] = (m, Manifest.ManifestJson.Sha256Hex(raw));
+                model = m;
+                shaHex = _cache[name].ShaHex;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = path + ": " + ex.Message;
+                _errors[name] = error;
+                return false;
+            }
+        }
+        error = "no '" + name + ".json' in search dirs [" + string.Join(", ", _searchDirs) + "]";
+        _errors[name] = error;
+        return false;
+    }
+}

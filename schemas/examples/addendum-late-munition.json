@@ -1,0 +1,14 @@
+{
+  "schema": "tspi-addendum/1",
+  "seed": 99,
+  "munitions": [
+    {
+      "parent": "red-01",
+      "id": "red-01-aam-1",
+      "model": "generic-aam",
+      "target": "blue-01",
+      "launch": { "when": "time", "at_s": 12.0 },
+      "guidance": { "kind": "pronav", "gain": 4.0 }
+    }
+  ]
+}

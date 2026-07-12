@@ -1,0 +1,9 @@
+<Project>
+  <!-- Keep obj/bin out of the project folders: src/Tspi.Core doubles as a Unity UPM
+       package, and Unity would import stray build artifacts as assets. -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts/bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tspi-sim.local/schemas/model.v1.schema.json",
+  "title": "tspi-model/1",
+  "description": "Vehicle model file (<name>.json in a models/ dir). All parameters NOTIONAL — keep real performance data out of this repo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "mass_kg"],
+  "properties": {
+    "schema": { "const": "tspi-model/1" },
+    "kind": { "enum": ["aircraft", "munition"] },
+    "mass_kg": { "type": "number", "exclusiveMinimum": 0 },
+    "g_limit_max": { "type": "number", "exclusiveMinimum": 0, "default": 9.0 },
+    "accel_long_max_mps2": { "type": "number", "exclusiveMinimum": 0, "default": 6.0 },
+    "accel_vert_max_mps2": { "type": "number", "exclusiveMinimum": 0, "default": 30.0 },
+    "speed_max_mps": { "type": "number", "exclusiveMinimum": 0, "default": 600.0 },
+    "boost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thrust_n", "duration_s"],
+      "properties": {
+        "thrust_n": { "type": "number", "minimum": 0 },
+        "duration_s": { "type": "number", "minimum": 0 }
+      }
+    },
+    "drag_cda_m2": { "type": "number", "minimum": 0, "default": 0 },
+    "pronav_gain_default": { "type": "number", "minimum": 0, "default": 4.0 },
+    "fuze_radius_m": { "type": "number", "exclusiveMinimum": 0, "default": 10.0 },
+    "max_flight_time_s": { "type": "number", "exclusiveMinimum": 0, "default": 120.0 }
+  }
+}

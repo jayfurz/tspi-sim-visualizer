@@ -1,0 +1,9 @@
+{
+  "schema": "tspi-model/1",
+  "kind": "aircraft",
+  "mass_kg": 70000,
+  "g_limit_max": 2.5,
+  "accel_long_max_mps2": 8.0,
+  "accel_vert_max_mps2": 15.0,
+  "speed_max_mps": 250.0
+}

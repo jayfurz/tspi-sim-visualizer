@@ -1,0 +1,11 @@
+{
+    "name": "TspiViewer",
+    "rootNamespace": "TspiViewer",
+    "references": [
+        "Tspi.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "autoReferenced": true
+}

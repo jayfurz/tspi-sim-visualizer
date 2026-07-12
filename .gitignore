@@ -1,0 +1,26 @@
+# .NET build output (redirected via src/Directory.Build.props)
+src/artifacts/
+bin/
+obj/
+*.user
+
+# Generated trajectory runs (golden test fixture is whitelisted below)
+runs/
+*.tspi
+!tools/tspi_py/tests/data/*.tspi
+
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+dist/
+.pytest_cache/
+
+# Unity (generated on open; only Assets/Packages/ProjectSettings are source)
+unity/TspiViewer/Library/
+unity/TspiViewer/Temp/
+unity/TspiViewer/Logs/
+unity/TspiViewer/UserSettings/
+unity/TspiViewer/obj/
+unity/TspiViewer/*.csproj
+unity/TspiViewer/*.sln

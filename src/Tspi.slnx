@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Tspi.Cli/Tspi.Cli.csproj" />
+  <Project Path="Tspi.Core/Tspi.Core.csproj" />
+  <Project Path="Tspi.Sim/Tspi.Sim.csproj" />
+  <Project Path="Tspi.Tests/Tspi.Tests.csproj" />
+</Solution>

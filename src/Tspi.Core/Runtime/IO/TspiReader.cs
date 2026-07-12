@@ -1,0 +1,177 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.MemoryMappedFiles;
+using Tspi.Core.Math;
+
+namespace Tspi.Core.IO
+{
+    /// <summary>
+    /// Memory-mapped .tspi reader. Random access to any sample is O(1):
+    /// index = (t - t0) / dt, byte = entity.DataOffset + index * stride.
+    /// TrySampleAt provides playback-grade interpolation: cubic Hermite position
+    /// (using stored velocities as tangents), Hermite-derivative velocity,
+    /// slerped attitude, lerped body rates.
+    /// </summary>
+    public sealed class TspiReader : IDisposable
+    {
+        private MemoryMappedFile _mmf;
+        private MemoryMappedViewAccessor _view;
+
+        public string Path { get; private set; }
+        public long FileLength { get; private set; }
+        public TspiHeader Header { get; private set; }
+        public TspiFooter Footer { get; private set; }
+        public long FooterOffset { get; private set; }
+        public long FooterLen { get; private set; }
+
+        public IReadOnlyList<TspiEntityEntry> Entities => Footer.Entities;
+        public IReadOnlyList<TspiEventEntry> Events => Footer.Events;
+        public double DtSec => Header.DtSec;
+
+        private TspiReader() { Path = ""; Header = new TspiHeader(); Footer = new TspiFooter(); }
+
+        public static TspiReader Open(string path)
+        {
+            TspiFormat.RequireLittleEndian();
+            var r = new TspiReader { Path = path };
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                r.FileLength = fs.Length;
+                if (r.FileLength < TspiFormat.HeaderSize + TspiFormat.TrailerSize)
+                    throw new InvalidDataException("File too small to be a .tspi: " + path);
+                var headerBuf = new byte[TspiFormat.HeaderSize];
+                if (!TspiFile.ReadExactly(fs, headerBuf, headerBuf.Length))
+                    throw new InvalidDataException("Short read on header: " + path);
+                r.Header = TspiHeader.ReadFrom(headerBuf);
+                if (!TspiFile.TryReadTrailer(fs, r.FileLength - TspiFormat.TrailerSize, out long fOff, out long fLen))
+                    throw new InvalidDataException(
+                        "No valid trailer at EOF (torn write? run 'tspi recover'): " + path);
+                r.FooterOffset = fOff;
+                r.FooterLen = fLen;
+                r.Footer = TspiFile.ReadFooterAt(fs, fOff, fLen);
+            }
+            r._mmf = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+            r._view = r._mmf.CreateViewAccessor(0, r.FileLength, MemoryMappedFileAccess.Read);
+            r.ValidateEntityTable();
+            return r;
+        }
+
+        private void ValidateEntityTable()
+        {
+            foreach (var e in Footer.Entities)
+            {
+                if (e.Layout != TspiFormat.LayoutSixDofV1)
+                    continue; // unknown layouts are legal; callers must check before sampling
+                if (e.Stride < TspiFormat.StrideSixDofV1)
+                    throw new InvalidDataException("Entity '" + e.Id + "' stride below layout-1 prefix size");
+                long end = e.DataOffset + e.SampleCount * e.Stride;
+                if (e.DataOffset < TspiFormat.HeaderSize || end > FileLength)
+                    throw new InvalidDataException("Entity '" + e.Id + "' block out of file bounds");
+            }
+        }
+
+        public TspiEntityEntry FindEntity(string id)
+        {
+            foreach (var e in Footer.Entities)
+                if (e.Id == id) return e;
+            return null;
+        }
+
+        public double StartSec(TspiEntityEntry e) => e.T0Ns / 1e9;
+
+        public double EndSec(TspiEntityEntry e) =>
+            (e.T0Ns + (e.SampleCount - 1) * (long)Header.DtNs) / 1e9;
+
+        public TspiRecord ReadSample(TspiEntityEntry e, long index)
+        {
+            if (index < 0 || index >= e.SampleCount)
+                throw new ArgumentOutOfRangeException(nameof(index));
+            _view.Read(e.DataOffset + index * e.Stride, out TspiRecord rec);
+            return rec;
+        }
+
+        /// <summary>
+        /// Interpolated state at tSec (seconds since the header epoch). Returns false when
+        /// t is outside the entity's alive window, unless clamp is true.
+        /// </summary>
+        public bool TrySampleAt(TspiEntityEntry e, double tSec, out TspiState state, bool clamp = false)
+        {
+            state = default;
+            if (e.SampleCount <= 0 || e.Layout != TspiFormat.LayoutSixDofV1) return false;
+            double t0 = StartSec(e), t1 = EndSec(e);
+            if (tSec < t0 || tSec > t1)
+            {
+                if (!clamp) return false;
+                tSec = tSec < t0 ? t0 : t1;
+            }
+            if (e.SampleCount == 1)
+            {
+                var only = ReadSample(e, 0);
+                state = new TspiState
+                {
+                    PosNed = only.Pos, VelNed = only.Vel,
+                    AttBodyToNed = only.Quat.Normalized(), OmegaBody = only.Omega,
+                };
+                return true;
+            }
+            double dt = DtSec;
+            double u = (tSec - t0) / dt;
+            long i = (long)System.Math.Floor(u);
+            if (i < 0) i = 0;
+            if (i > e.SampleCount - 2) i = e.SampleCount - 2;
+            u -= i;
+
+            TspiRecord a = ReadSample(e, i);
+            TspiRecord b = ReadSample(e, i + 1);
+
+            double h00 = (2 * u - 3) * u * u + 1;
+            double h10 = ((u - 2) * u + 1) * u;
+            double h01 = (3 - 2 * u) * u * u;
+            double h11 = (u - 1) * u * u;
+            Vec3d pos = h00 * a.Pos + (h10 * dt) * a.Vel + h01 * b.Pos + (h11 * dt) * b.Vel;
+
+            double g00 = 6 * u * u - 6 * u;
+            double g10 = 3 * u * u - 4 * u + 1;
+            double g01 = -6 * u * u + 6 * u;
+            double g11 = 3 * u * u - 2 * u;
+            Vec3d vel = (g00 / dt) * a.Pos + g10 * a.Vel + (g01 / dt) * b.Pos + g11 * b.Vel;
+
+            state = new TspiState
+            {
+                PosNed = pos,
+                VelNed = vel,
+                AttBodyToNed = QuatD.Slerp(a.Quat.Normalized(), b.Quat.Normalized(), u),
+                OmegaBody = a.Omega + u * (b.Omega - a.Omega),
+            };
+            return true;
+        }
+
+        /// <summary>Walk the footer chain, newest first (index 0 == current footer).</summary>
+        public List<TspiFooter> ReadFooterChain()
+        {
+            var chain = new List<TspiFooter> { Footer };
+            long? off = Footer.PrevFooterOffset, len = Footer.PrevFooterLen;
+            using (var fs = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                int guard = 0;
+                while (off.HasValue && len.HasValue && guard++ < 1024)
+                {
+                    var f = TspiFile.ReadFooterAt(fs, off.Value, len.Value);
+                    chain.Add(f);
+                    off = f.PrevFooterOffset;
+                    len = f.PrevFooterLen;
+                }
+            }
+            return chain;
+        }
+
+        public void Dispose()
+        {
+            _view?.Dispose();
+            _mmf?.Dispose();
+            _view = null;
+            _mmf = null;
+        }
+    }
+}

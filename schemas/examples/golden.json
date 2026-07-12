@@ -1,0 +1,38 @@
+{
+  "schema": "tspi-scenario/1",
+  "name": "golden",
+  "seed": 12345,
+  "scene": {
+    "origin_lla": { "lat_deg": 34.9061, "lon_deg": -117.8839, "alt_m": 700.0 },
+    "epoch": "2026-01-02T03:04:05Z",
+    "duration_s": 3.0,
+    "dt_s": 0.1,
+    "environment": { "atmosphere": "none" }
+  },
+  "output": { "trajectory_file": "runs/{name}.tspi" },
+  "entities": [
+    {
+      "id": "blue-01",
+      "team": "blue",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": { "pos_ned_m": [0, 0, -5000], "vel_ned_mps": [200, 0, 0] },
+      "munitions": [
+        {
+          "id": "dart-01",
+          "model": "generic-bomb",
+          "target": "red-01",
+          "launch": { "when": "time", "at_s": 0.5 },
+          "guidance": { "kind": "ballistic" }
+        }
+      ]
+    },
+    {
+      "id": "red-01",
+      "team": "red",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": { "pos_ned_m": [8000, 500, -5000], "vel_ned_mps": [-200, 0, 0] }
+    }
+  ]
+}

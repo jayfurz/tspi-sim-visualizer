@@ -1,0 +1,10 @@
+{
+  "schema": "tspi-model/1",
+  "kind": "munition",
+  "mass_kg": 250,
+  "g_limit_max": 3.0,
+  "drag_cda_m2": 0.02,
+  "pronav_gain_default": 0.0,
+  "fuze_radius_m": 8.0,
+  "max_flight_time_s": 300.0
+}

@@ -1,0 +1,8 @@
+{
+  "name": "com.tspi.core",
+  "version": "0.1.0",
+  "displayName": "TSPI Core",
+  "description": "Shared .tspi trajectory format, WGS84/NED frames, and quaternion math for the TSPI simulator and Unity viewer. Pure C#, no engine references.",
+  "unity": "6000.0",
+  "author": { "name": "tspi-sim" }
+}

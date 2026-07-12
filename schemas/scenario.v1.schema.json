@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tspi-sim.local/schemas/scenario.v1.schema.json",
+  "title": "tspi-scenario/1",
+  "description": "Scenario manifest for the TSPI simulator. Everything beyond identity + initial state is optional with defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "scene", "entities"],
+  "properties": {
+    "schema": { "const": "tspi-scenario/1" },
+    "name": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "seed": { "type": "integer", "minimum": 0, "default": 0 },
+    "scene": { "$ref": "#/$defs/scene" },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trajectory_file": {
+          "type": "string",
+          "default": "runs/{name}-{seed:04}.tspi",
+          "description": "Relative to the manifest directory. Placeholders: {name}, {seed}, {seed:0N}."
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entity" }
+    }
+  },
+  "$defs": {
+    "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin_lla", "duration_s"],
+      "properties": {
+        "origin_lla": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lat_deg", "lon_deg", "alt_m"],
+          "properties": {
+            "lat_deg": { "type": "number", "minimum": -90, "maximum": 90 },
+            "lon_deg": { "type": "number", "minimum": -180, "maximum": 180 },
+            "alt_m": { "type": "number" }
+          }
+        },
+        "epoch": { "type": "string", "format": "date-time", "default": "2026-01-01T00:00:00Z" },
+        "duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "dt_s": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.01 },
+        "environment": { "$ref": "#/$defs/environment" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "atmosphere": { "enum": ["exp8500", "none"], "default": "exp8500" },
+        "wind": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "constant_ned_mps": { "$ref": "#/$defs/vec3" },
+            "layers": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["alt_msl_m", "from_deg", "speed_mps"],
+                "properties": {
+                  "alt_msl_m": { "type": "number" },
+                  "from_deg": { "type": "number", "description": "Meteorological: direction wind blows FROM, deg true" },
+                  "speed_mps": { "type": "number", "minimum": 0 }
+                }
+              }
+            },
+            "gusts": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "model": { "const": "gauss_markov" },
+                "sigma_mps": { "type": "number", "minimum": 0, "default": 1.0 },
+                "tau_s": { "type": "number", "exclusiveMinimum": 0, "default": 5.0 }
+              }
+            }
+          },
+          "not": { "required": ["constant_ned_mps", "layers"] }
+        }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "model", "initial"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "team": { "type": "string", "default": "gray", "examples": ["blue", "red", "white", "gray"] },
+        "type": { "const": "aircraft", "default": "aircraft" },
+        "model": { "type": "string", "minLength": 1, "description": "Resolved as <model>.json from the model search dirs" },
+        "initial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pos_ned_m", "vel_ned_mps"],
+          "properties": {
+            "pos_ned_m": { "$ref": "#/$defs/vec3" },
+            "vel_ned_mps": { "$ref": "#/$defs/vec3" },
+            "att_ypr_deg": { "$ref": "#/$defs/vec3" }
+          }
+        },
+        "dispersions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pos_ned_sigma_m": { "$ref": "#/$defs/vec3" },
+            "vel_ned_sigma_mps": { "$ref": "#/$defs/vec3" }
+          }
+        },
+        "maneuvers": { "type": "array", "items": { "$ref": "#/$defs/maneuver" } },
+        "munitions": { "type": "array", "items": { "$ref": "#/$defs/munition" } }
+      }
+    },
+    "maneuver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at_s"],
+      "description": "Channel model: a segment overrides only the channels it names; unnamed channels hold.",
+      "properties": {
+        "at_s": { "type": "number", "minimum": 0 },
+        "lateral": { "$ref": "#/$defs/lateral" },
+        "vertical": { "$ref": "#/$defs/vertical" },
+        "speed": { "$ref": "#/$defs/speed" }
+      }
+    },
+    "lateral": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind"], "properties": { "kind": { "const": "hold" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "heading_deg"],
+          "properties": {
+            "kind": { "const": "turn_to_heading" },
+            "heading_deg": { "type": "number" },
+            "g_limit": { "type": "number", "exclusiveMinimum": 0, "default": 3.0 }
+          }
+        }
+      ]
+    },
+    "vertical": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind"], "properties": { "kind": { "const": "hold" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "alt_msl_m"],
+          "properties": {
+            "kind": { "const": "hold_alt" },
+            "alt_msl_m": { "type": "number" },
+            "rate_mps": { "type": "number", "exclusiveMinimum": 0, "default": 20.0 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "delta_m"],
+          "properties": {
+            "kind": { "const": "delta_alt" },
+            "delta_m": { "type": "number", "description": "Altitude change, +up, relative to activation" },
+            "rate_mps": { "type": "number", "exclusiveMinimum": 0, "default": 20.0 }
+          }
+        }
+      ]
+    },
+    "speed": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind"], "properties": { "kind": { "const": "hold" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "speed_mps"],
+          "properties": {
+            "kind": { "const": "set" },
+            "speed_mps": { "type": "number", "minimum": 0 },
+            "accel_mps2": { "type": "number", "exclusiveMinimum": 0, "default": 3.0 }
+          }
+        }
+      ]
+    },
+    "launch": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["when", "at_s"],
+          "properties": { "when": { "const": "time" }, "at_s": { "type": "number", "minimum": 0 } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["when", "less_than_m"],
+          "properties": { "when": { "const": "range_to_target" }, "less_than_m": { "type": "number", "exclusiveMinimum": 0 } }
+        }
+      ]
+    },
+    "munition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "model", "target"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "launch": {
+          "$ref": "#/$defs/launch",
+          "description": "Absent: carried but never employed."
+        },
+        "guidance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["pronav", "ballistic"], "default": "pronav" },
+            "gain": { "type": "number", "description": "Navigation constant N; default from the model file" }
+          }
+        }
+      }
+    }
+  }
+}
