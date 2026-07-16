@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tspi viewer</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: rgba(17, 24, 34, 0.88); --border: #2a3546;
+    --fg: #d7dee8; --dim: #8494a8; --accent: #4d9aff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg);
+    color: var(--fg); font: 13px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; backdrop-filter: blur(4px); }
+
+  #topbar { top: 10px; left: 10px; right: 10px; display: flex; gap: 16px;
+    align-items: baseline; flex-wrap: wrap; }
+  #topbar .title { color: var(--accent); font-weight: bold; }
+  #topbar .meta { color: var(--dim); }
+  #topbar button { margin-left: auto; }
+
+  #entities { top: 62px; left: 10px; max-height: calc(100% - 200px); overflow-y: auto;
+    min-width: 210px; }
+  #entities .row { display: flex; gap: 7px; align-items: center; padding: 3px 4px;
+    border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  #entities .row:hover { background: rgba(255,255,255,0.06); }
+  #entities .row.following { outline: 1px solid var(--accent); }
+  #entities .row.dead { opacity: 0.38; }
+  #entities .chip { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  #entities .sub { color: var(--dim); font-size: 11px; }
+
+  #eventsPanel { top: 62px; right: 10px; max-height: calc(100% - 200px); overflow-y: auto;
+    max-width: 320px; }
+  #eventsPanel h3 { font-size: 11px; text-transform: uppercase; color: var(--dim);
+    margin-bottom: 4px; letter-spacing: 0.08em; }
+  #eventsPanel .ev { padding: 3px 4px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  #eventsPanel .ev:hover { background: rgba(255,255,255,0.06); }
+  #eventsPanel .ev .t { color: var(--accent); }
+  #eventsPanel .ev .kind { font-weight: bold; }
+
+  #transport { left: 10px; right: 10px; bottom: 10px; display: flex; gap: 12px;
+    align-items: center; }
+  #transport .scrubwrap { position: relative; flex: 1; height: 22px; }
+  #scrub { position: absolute; inset: 0; width: 100%; margin: 0; cursor: pointer; }
+  #ticks { position: absolute; left: 0; right: 0; top: -5px; height: 5px; pointer-events: none; }
+  #ticks .tick { position: absolute; width: 2px; height: 5px; background: #e8c34d;
+    transform: translateX(-1px); }
+  #timeLbl { min-width: 190px; text-align: right; color: var(--dim); }
+  #timeLbl b { color: var(--fg); }
+
+  button, select { background: #1a2331; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 10px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  label.chk { color: var(--dim); cursor: pointer; user-select: none; }
+
+  #drop { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+    align-items: center; justify-content: center; color: var(--dim); cursor: pointer;
+    background: radial-gradient(ellipse at center, rgba(77,154,255,0.06), transparent 65%); }
+  #drop .big { font-size: 20px; color: var(--fg); }
+  #drop.dragover { outline: 2px dashed var(--accent); outline-offset: -14px; }
+  #drop kbd { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; }
+  .hidden { display: none !important; }
+  #err { position: absolute; left: 50%; top: 46px; transform: translateX(-50%);
+    background: #3a1520; border: 1px solid #a03040; color: #ffb0b8; padding: 6px 14px;
+    border-radius: 6px; max-width: 80%; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="topbar" class="panel hidden">
+  <span class="title" id="fileName"></span>
+  <span class="meta" id="fileMeta"></span>
+  <button id="openBtn2" title="Open another file">open…</button>
+  <button id="fitBtn" title="Frame all trajectories (F)">fit</button>
+</div>
+
+<div id="entities" class="panel hidden"></div>
+
+<div id="eventsPanel" class="panel hidden">
+  <h3>events</h3>
+  <div id="events"></div>
+</div>
+
+<div id="transport" class="panel hidden">
+  <button id="playBtn" title="Space">&#9654;</button>
+  <select id="speedSel" title="Playback rate">
+    <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+    <option value="1" selected>1×</option><option value="2">2×</option>
+    <option value="4">4×</option><option value="8">8×</option>
+  </select>
+  <label class="chk"><input type="checkbox" id="loopChk" checked> loop</label>
+  <div class="scrubwrap">
+    <div id="ticks"></div>
+    <input type="range" id="scrub" min="0" max="1" step="any" value="0">
+  </div>
+  <span id="timeLbl"></span>
+</div>
+
+<div id="drop">
+  <div class="big">drop a <b>.tspi</b> file here</div>
+  <div>or click to browse &mdash; runs entirely in this page, nothing is uploaded</div>
+  <div><kbd>space</kbd> play/pause &nbsp; <kbd>&larr;/&rarr;</kbd> &plusmn;1 s &nbsp;
+    <kbd>shift</kbd>+<kbd>&larr;/&rarr;</kbd> &plusmn;10 s &nbsp; <kbd>F</kbd> fit view</div>
+</div>
+<div id="err" class="hidden"></div>
+<input type="file" id="fileInput" accept=".tspi" class="hidden">
+
+<script src="tspi.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

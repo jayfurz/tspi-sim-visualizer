@@ -62,11 +62,21 @@ at the same moment. Determinism means everything before the edit replays byte-id
 so it feels like branching the world from "now". See `unity/README.md` for setup and
 georeferencing (Cesium) notes.
 
+## Web viewer (no Unity, no dependencies)
+
+`web/viewer/index.html` is a playback-only viewer that runs in any browser straight from
+disk: drag a `.tspi` on, get orbitable 3D trails, attitude-oriented markers, scrubbing,
+and the footer event log — parsed and rendered with hand-rolled JS/WebGL, zero
+dependencies, no build step. It exists for environments where Unity can't be approved or
+binaries can't be delivered: the whole viewer is auditable source. See `web/README.md`.
+
 ## Documentation
 
 - `docs/FORMAT.md` — the `.tspi` container, normative (header/records/footer/trailer,
   append & recovery, layout-evolution rules)
 - `docs/CONVENTIONS.md` — frames, quaternion, time, units, determinism (read first)
+- `docs/ICD-NN.md` — interface control document for the NN guidance package
+  (training-data record, runtime obs contract, policy delivery format, open items)
 - `docs/ARCHITECTURE.md` — component map, fidelity level, scaling numbers
 - `schemas/` — JSON Schemas for manifests/models + validated examples
 
@@ -76,7 +86,9 @@ georeferencing (Cesium) notes.
    `manifest + models + seed + sim_version → byte-identical .tspi` on one platform
    (golden-locked in CI; cross-platform is tolerance-based via `tspi diff --tol-m`). Runs
    stream to disk as they integrate, so a sweep never buffers whole trajectories.
-2. Unity is a pure playback client through the same `Tspi.Core` reader.
+2. Viewers are pure playback clients: Unity through the same `Tspi.Core` reader, the web
+   viewer through a JS port of it (cross-checked against `tools/tspi_py` in its tests).
+   Nothing on a screen was ever computed in a viewer.
 3. Appends never rewrite bytes: torn appends recover (`tspi recover`, fuzz-tested at every
    truncation offset), live readers are safe, the footer chain keeps every historical index
    snapshot, and the persisted environment lets appended munitions fly in the original air mass.

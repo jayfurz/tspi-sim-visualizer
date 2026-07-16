@@ -52,6 +52,9 @@ errors surface from the CLI's validator in the status line. Desktop editor/playe
 
 ## Notes & known limits
 
+- **If Unity can't be approved or binaries can't be delivered**: `web/viewer/` is a
+  playback-only viewer with the same never-simulates contract — dependency-free
+  JS/WebGL that runs from source in any browser. See `web/README.md`.
 - **Not yet compiled in CI**: this repo's CI builds the .NET side; the Unity project is
   scaffolded (correct package layout, asmdefs, 6000.0 pin) but was authored without a
   Unity editor in the loop. First open may surface small API nits — expected cost ≈ minutes.
