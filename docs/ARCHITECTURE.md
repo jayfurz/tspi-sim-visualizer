@@ -4,6 +4,7 @@
 scenario.json ──► tspi validate ──► tspi run / sweep (headless, deterministic)
    (manifest)                             │
 models/*.json ────────────────────────────┤  fixed-step RK4, f64, seeded RNG streams
+measured.csv ──► tspi import ─────────────┤  measured tracks resampled to the fixed dt grid
                                           ▼
                                    runs/*.tspi  (mmap container, docs/FORMAT.md)
                                           │
@@ -33,6 +34,11 @@ models/*.json ──────────────────────
 4. **Munitions fly against tracks, not entities.** Guidance consumes an `ITargetTrack`
    (Hermite-sampled trajectory). Live scenario and later `tspi append` use the same code
    path — the only difference is whether the track comes from memory or from the file.
+   Measured TSPI enters through the same seam: `tspi import` converts externally
+   recorded tracks (CSV; regular or irregular rate) into a `.tspi`, and an addendum
+   flies simulated munitions against them — entities that were measured are never
+   re-simulated. Imported files are stamped `op: "import"` with a `measured+…` dynamics
+   tag (FORMAT.md) so nobody mistakes range data for sim output or vice versa.
 
 ## Fidelity level (deliberate, documented)
 
@@ -94,8 +100,9 @@ docs/                 FORMAT.md (normative), CONVENTIONS.md, this file
 schemas/              JSON Schemas + examples/ (validated in CI, golden.json locks format)
 models/               notional vehicle models (sha-256'd into file provenance)
 src/Tspi.Core/        shared format+math library == Unity package com.tspi.core
-src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, pronav, wind, RK4)
-src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/inspect/recover/export/diff)
+src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, pronav, wind, RK4),
+                      measured-TSPI importer (CSV -> fixed-dt resample)
+src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/import/inspect/recover/export/diff)
 src/Tspi.Tests/       xUnit: format round-trip, recovery, analytic V&V, golden lock
 tools/tspi_py/        numpy mmap reader + pytest against the same golden file
 unity/TspiViewer/     Unity 6000.0.x playback client (never simulates)

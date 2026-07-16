@@ -11,6 +11,9 @@ fixed for v1 and enforced in code + tests.
   ECEF internally and treat NED as an I/O convenience.
 - **ECEF / LLA** use **WGS84**. Altitudes are **ellipsoidal** (no geoid/orthometric
   correction). A DEM-based terrain provider would need geoid handling; noted for future.
+  Measured data is frequently MSL: `tspi import --geoid-offset-m N` adds the local geoid
+  undulation as a constant (valid over a test range) and records it in provenance —
+  importing MSL altitudes without it silently offsets the file by the undulation.
 - **Body frame**: x forward, y right, z down.
 - **Unity** (viewer only): left-handed, y up. Mapping: `unity = (E, −D, N)`; +Z = north,
   +X = east, +Y = up. Conversion lives in one place (`NedUnity.cs`) with a round-trip test.

@@ -11,7 +11,7 @@ appends, byte-identical reruns.
 
 ```bash
 # .NET 10 SDK required (https://dot.net). Unity 6000.0.x for the viewer (optional).
-cd src && dotnet test && cd ..                       # 43 tests: format, recovery, V&V, golden lock
+cd src && dotnet test && cd ..                       # 75 tests: format, recovery, V&V, import, golden lock
 alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
 
 tspi validate schemas/examples/intercept.json
@@ -20,6 +20,11 @@ tspi inspect schemas/examples/runs/intercept-0042.tspi --events --provenance
 
 # later munitions vs the recorded run (footer-chained append, old bytes untouched)
 tspi append schemas/examples/runs/intercept-0042.tspi schemas/examples/addendum-late-munition.json
+
+# measured TSPI (e.g. range data, CSV) imports to a first-class .tspi — simulated
+# munitions then fly against the measured tracks via append, never re-simulating them
+tspi export schemas/examples/runs/intercept-0042.tspi -o /tmp/measured.csv  # stand-in for real data
+tspi import /tmp/measured.csv --origin 34.9061,-117.8839,700
 
 # Monte Carlo across all cores + campaign index
 tspi sweep schemas/examples/intercept.json --seeds 1:200 -j 10 --out-dir /tmp/sweep

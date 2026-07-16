@@ -22,6 +22,7 @@ public static class Program
                 "run" => RunCommand.Run(rest),
                 "sweep" => SweepCommand.Run(rest),
                 "append" => AppendCommand.Run(rest),
+                "import" => ImportCommand.Run(rest),
                 "inspect" => InspectCommand.Run(rest),
                 "recover" => RecoverCommand.Run(rest),
                 "export" => ExportCommand.Run(rest),
@@ -62,6 +63,8 @@ usage: tspi <command> [options]
   run <scenario.json> [-o out.tspi] [--seed N] [--models DIR]
   sweep <scenario.json> --seeds A:B [-j N] [--out-dir DIR] [--models DIR]
   append <file.tspi> <addendum.json> [--seed N] [--models DIR]
+  import <data.csv> [-o out.tspi] [--dt S] [--origin LAT,LON,ALT] [--epoch ISO8601]
+         [--max-gap-s S] [--geoid-offset-m M]  measured TSPI -> .tspi (resampled to fixed dt)
   inspect <file.tspi> [--events] [--provenance] [--chain]
   recover <file.tspi> [--apply]             repair a torn append (dry-run without --apply)
   export <file.tspi> --format csv [--entity ID] [-o out.csv]

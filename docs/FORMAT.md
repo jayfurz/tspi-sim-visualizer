@@ -131,6 +131,19 @@ point-mass; the attitude fragment says how aircraft attitude was produced:
 
 Munition attitude is velocity-aligned (synthesized) in all three cases.
 
+Files created by `tspi import` (externally measured TSPI, resampled onto the fixed dt
+grid) carry an `op: "import"` provenance record instead: no `seed`/`models`, a `source`
++ `source_sha256` pair naming the input data, and the header's `manifest_sha256` slot
+holds that same source-file hash. Their `dynamics` tag is one of:
+
+- `measured+input-attitude` — attitude columns came from the source data (body rates
+  from the source when present, else finite-differenced at write).
+- `measured+synth-attitude` — the source carried no attitude; yaw/pitch follow the
+  resampled velocity with coordinated-turn bank, rates finite-differenced.
+
+An imported file has no `environment` field (the real air mass is unknown), so a later
+`tspi append` flies its munitions in the default environment unless one is added.
+
 ## Trailer (32 bytes, always the last 32 bytes of the file)
 
 | offset | size | field |

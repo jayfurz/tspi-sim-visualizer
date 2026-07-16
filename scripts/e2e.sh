@@ -25,6 +25,15 @@ step "determinism: second run is byte-identical"
 $TSPI run schemas/examples/intercept.json -o "$WORK/run2.tspi" --quiet
 $TSPI diff "$WORK/run.tspi" "$WORK/run2.tspi"
 
+step "measured-TSPI import: export -> reimport -> positions identical"
+$TSPI export "$WORK/run.tspi" --format csv -o "$WORK/measured.csv"
+$TSPI import "$WORK/measured.csv" --origin 34.9061,-117.8839,700 -o "$WORK/imported.tspi"
+$TSPI diff "$WORK/run.tspi" "$WORK/imported.tspi" --tol-m 1e-9
+
+step "simulated munition vs imported (measured) tracks"
+$TSPI append "$WORK/imported.tspi" schemas/examples/addendum-late-munition.json
+$TSPI inspect "$WORK/imported.tspi" --provenance | grep -F '"op":"import"' > /dev/null && echo "import provenance ok"
+
 step "append red counter-missile against recorded tracks"
 $TSPI append "$WORK/run.tspi" schemas/examples/addendum-late-munition.json
 $TSPI inspect "$WORK/run.tspi" --chain | tail -4
