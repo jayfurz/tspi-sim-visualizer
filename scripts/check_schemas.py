@@ -33,6 +33,7 @@ def main() -> int:
         "tspi-scenario/1": Draft202012Validator(load(SCHEMAS / "scenario.v1.schema.json"), registry=registry),
         "tspi-addendum/1": Draft202012Validator(load(SCHEMAS / "addendum.v1.schema.json"), registry=registry),
         "tspi-model/1": Draft202012Validator(load(SCHEMAS / "model.v1.schema.json"), registry=registry),
+        "tspi-policy/1": Draft202012Validator(load(SCHEMAS / "policy.v1.schema.json"), registry=registry),
     }
 
     failures = 0

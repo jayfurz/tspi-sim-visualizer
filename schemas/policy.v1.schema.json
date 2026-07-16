@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tspi-sim.local/schemas/policy.v1.schema.json",
+  "title": "tspi-policy/1",
+  "description": "Learned guidance policy: a small feed-forward network over the versioned 'los_v1' LOS-frame observation. Inference is hand-rolled f64 in the sim (no ML runtime). The airframe g-limit is applied outside the policy. Weights are NOTIONAL.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "obs", "layers"],
+  "properties": {
+    "schema": { "const": "tspi-policy/1" },
+    "kind": { "const": "mlp" },
+    "obs": {
+      "const": "los_v1",
+      "description": "Observation contract: [range, closing_speed, self_speed, |los_rate|], each divided by its norm. Output: [a_e1, a_e2, a_e3] x norm.accel_mps2 in the LOS frame (e1 = toward target, e2 = LOS-rate direction, e3 = e1 x e2). Pronav is a_e3 = -N*closing*|los_rate| in this space."
+    },
+    "norm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "range_m": { "type": "number", "exclusiveMinimum": 0, "default": 20000 },
+        "speed_mps": { "type": "number", "exclusiveMinimum": 0, "default": 1000 },
+        "omega_rps": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
+        "accel_mps2": { "type": "number", "exclusiveMinimum": 0, "default": 100 }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["w", "b"],
+        "properties": {
+          "w": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "array", "minItems": 1, "items": { "type": "number" } },
+            "description": "Row-major weights, w[out][in]; first layer takes the 4-wide observation, last layer outputs 3"
+          },
+          "b": { "type": "array", "minItems": 1, "items": { "type": "number" } },
+          "act": { "enum": ["tanh", "relu", "linear"], "default": "tanh" }
+        }
+      }
+    }
+  }
+}

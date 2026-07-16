@@ -69,9 +69,17 @@ this repo.
   from rigid-body EOM as above (notional inertia/torque authority, e.g.
   `models/generic-fighter-rb.json`). Lift implicitly balances gravity.
 - Munitions: point-mass with boost thrust along velocity, quadratic drag against the air
-  mass (exp-atmosphere), gravity, and true proportional navigation with a g-limit;
-  attitude aligned to velocity. All model parameters are **notional** — keep real
-  performance data out of this repo.
+  mass (exp-atmosphere), gravity, and a guidance law behind the **`IGuidanceLaw` seam**
+  (`src/Tspi.Sim/Engine/Guidance.cs`): true proportional navigation by default
+  (evaluated at every RK4 stage — byte-locked by the golden test), or a learned policy
+  (`guidance.kind: "nn"`) — a hand-rolled f64 MLP over the versioned LOS-frame
+  observation `los_v1`, evaluated once per output sample and zero-order-held across the
+  RK4 step so commands change only on the dt grid. The airframe g-limit clamps
+  **outside** the law, so no policy — analytic or learned — can exceed the envelope.
+  Policy weights (`tspi-policy/1`) resolve like vehicle models and their SHA-256 joins
+  the provenance `models` map; train/distill in Python on sweep output, export weights,
+  fly them here with no ML runtime in the loop. Attitude aligned to velocity. All model
+  parameters are **notional** — keep real performance data out of this repo.
 - Wind: constant vector or altitude-layered profile, plus first-order Gauss-Markov
   gusts (per-entity seeded streams). 4-D gridded weather is a future provider.
 - Terrain: flat plane at origin altitude (ground-impact events). A DEM heightfield
@@ -103,10 +111,10 @@ path — out of scope for v1, and called out here rather than hidden.
 ```
 docs/                 FORMAT.md (normative), CONVENTIONS.md, this file
 schemas/              JSON Schemas + examples/ (validated in CI, golden.json locks format)
-models/               notional vehicle models (sha-256'd into file provenance)
+models/               notional vehicle models + guidance policies (sha-256'd into file provenance)
 src/Tspi.Core/        shared format+math+manifest-authoring library == Unity package com.tspi.core
-src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, pronav, wind, RK4),
-                      measured-TSPI importer (CSV -> fixed-dt resample)
+src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, guidance
+                      seam pronav/nn, wind, RK4), measured-TSPI importer (CSV -> fixed dt)
 src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/import/inspect/recover/export/diff)
 src/Tspi.Tests/       xUnit: format round-trip, recovery, analytic V&V, golden lock
 tools/tspi_py/        numpy mmap reader + pytest against the same golden file

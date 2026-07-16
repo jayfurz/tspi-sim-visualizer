@@ -192,27 +192,41 @@ public sealed class AircraftDynamics : IAircraftDynamics
 }
 
 /// <summary>
-/// Notional powered munition: boost thrust, quadratic drag, gravity, and true
-/// proportional-navigation guidance against a target track. All parameters notional.
+/// Notional powered munition: boost thrust, quadratic drag, gravity, and a guidance
+/// law behind the IGuidanceLaw seam (pronav by default, learned policies via
+/// guidance.kind "nn"). The airframe g-limit clamp lives HERE, outside the law, so no
+/// policy can command past the envelope. All parameters notional.
 /// </summary>
 public sealed class MunitionDynamics
 {
     private readonly VehicleModel _model;
-    private readonly double _navGain;
+    private readonly IGuidanceLaw? _law; // null = ballistic/unguided
     private readonly double _launchTimeSec;
-    public bool Guided { get; }
+    private Vec3d _heldCmd;
+    private bool _heldValid;
 
-    public MunitionDynamics(VehicleModel model, double navGain, double launchTimeSec, bool guided)
+    public MunitionDynamics(VehicleModel model, IGuidanceLaw? law, double launchTimeSec)
     {
         _model = model;
-        _navGain = navGain;
+        _law = law;
         _launchTimeSec = launchTimeSec;
-        Guided = guided;
     }
+
+    public bool Guided => _law != null;
+    /// <summary>True when the law is evaluated once per output sample (ZOH) instead of at every RK4 stage.</summary>
+    public bool WantsHeldCommand => _law != null && _law.HoldAcrossStep;
 
     public double MassKg => _model.MassKg;
     public double FuzeRadiusM => _model.FuzeRadiusM;
     public double MaxFlightTimeS => _model.MaxFlightTimeS;
+
+    /// <summary>ZOH refresh for hold-across-step laws: called once per output sample,
+    /// before the RK4 step, with the air-relative state at the sample boundary.</summary>
+    public void UpdateHeldCommand(double tSec, MotionState self, MotionState target)
+    {
+        if (!WantsHeldCommand) return;
+        _heldValid = _law!.TryAccelCmd(tSec, self, target, out _heldCmd);
+    }
 
     public Vec3d Acceleration(double tSec, MotionState self, MotionState target, double rho)
     {
@@ -228,25 +242,19 @@ public sealed class MunitionDynamics
         if (rho > 0 && _model.DragCdaM2 > 0 && speed > 1e-6)
             accel += v * (-(0.5 * rho * _model.DragCdaM2 / _model.MassKg) * speed);
 
-        // Proportional navigation.
-        if (Guided)
+        // Guidance: the law commands, the airframe clamps.
+        if (_law != null)
         {
-            Vec3d r = target.Pos - self.Pos;
-            double range = r.Length;
-            if (range > 1e-3)
+            Vec3d aCmd;
+            bool has;
+            if (_law.HoldAcrossStep) { has = _heldValid; aCmd = _heldCmd; }
+            else has = _law.TryAccelCmd(tSec, self, target, out aCmd);
+            if (has)
             {
-                Vec3d vRel = target.Vel - self.Vel;
-                Vec3d omega = Vec3d.Cross(r, vRel) / (range * range);      // LOS angular rate
-                double closing = -Vec3d.Dot(r, vRel) / range;              // + when closing
-                if (closing > 0)
-                {
-                    Vec3d rHat = r / range;
-                    Vec3d aCmd = _navGain * closing * Vec3d.Cross(omega, rHat);
-                    double aMax = _model.GLimitMax * MathUtil.G0;
-                    double m = aCmd.Length;
-                    if (m > aMax) aCmd = aCmd * (aMax / m);
-                    accel += aCmd;
-                }
+                double aMax = _model.GLimitMax * MathUtil.G0;
+                double m = aCmd.Length;
+                if (m > aMax) aCmd = aCmd * (aMax / m);
+                accel += aCmd;
             }
         }
         return accel;

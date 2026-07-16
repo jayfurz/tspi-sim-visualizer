@@ -222,8 +222,9 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "kind": { "enum": ["pronav", "ballistic"], "default": "pronav" },
-            "gain": { "type": "number", "description": "Navigation constant N; default from the model file" }
+            "kind": { "enum": ["pronav", "ballistic", "nn"], "default": "pronav" },
+            "gain": { "type": "number", "description": "Navigation constant N (pronav); default from the model file" },
+            "policy": { "type": "string", "minLength": 1, "description": "Learned-guidance policy (kind 'nn'), resolved as <policy>.json from the model search dirs (tspi-policy/1)" }
           }
         }
       }

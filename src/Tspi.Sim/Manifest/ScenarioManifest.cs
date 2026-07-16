@@ -167,9 +167,13 @@ public sealed class LaunchAtRange : LaunchSpec
 
 public sealed class GuidanceSpec
 {
+    /// <summary>"pronav" | "ballistic" | "nn"</summary>
     public string Kind { get; set; } = "pronav";
-    /// <summary>Navigation constant N. Absent: model's pronav_gain_default.</summary>
+    /// <summary>Navigation constant N (pronav). Absent: model's pronav_gain_default.</summary>
     public double? Gain { get; set; }
+    /// <summary>Learned-guidance policy name (kind "nn"), resolved as {policy}.json from
+    /// the model search dirs like a vehicle model.</summary>
+    public string? Policy { get; set; }
 }
 
 /// <summary>tspi-addendum/1: munitions simulated later against recorded trajectories and appended to an existing file.</summary>

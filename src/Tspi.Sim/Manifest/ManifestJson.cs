@@ -208,8 +208,20 @@ public static class ManifestValidator
                     Warn($"{mwhere}: launch at_s={lt.AtS}s is outside the scenario window");
                 if (mun.Launch is LaunchAtRange lr && lr.LessThanM <= 0)
                     Err($"{mwhere}: launch less_than_m must be > 0");
-                if (mun.Guidance is { } gd && gd.Kind != "pronav" && gd.Kind != "ballistic")
-                    Err($"{mwhere}: guidance.kind must be 'pronav' or 'ballistic' (got '{gd.Kind}')");
+                if (mun.Guidance is { } gd)
+                {
+                    if (gd.Kind != "pronav" && gd.Kind != "ballistic" && gd.Kind != "nn")
+                        Err($"{mwhere}: guidance.kind must be 'pronav', 'ballistic', or 'nn' (got '{gd.Kind}')");
+                    else if (gd.Kind == "nn")
+                    {
+                        if (string.IsNullOrEmpty(gd.Policy))
+                            Err($"{mwhere}: guidance.kind 'nn' requires guidance.policy");
+                        else if (!models.TryResolvePolicy(gd.Policy!, out _, out _, out string pErr))
+                            Err($"{mwhere}: guidance.policy '{gd.Policy}': {pErr}");
+                    }
+                    else if (!string.IsNullOrEmpty(gd.Policy))
+                        Warn($"{mwhere}: guidance.policy is ignored for kind '{gd.Kind}'");
+                }
             }
         }
 
@@ -239,6 +251,20 @@ public static class ManifestValidator
                 r.Errors.Add($"{where}: model '{mun.Model}': {err}");
             else if (mm!.Kind != "munition")
                 r.Errors.Add($"{where}: model '{mun.Model}' has kind '{mm.Kind}', expected 'munition'");
+            if (mun.Guidance is { } gd)
+            {
+                if (gd.Kind != "pronav" && gd.Kind != "ballistic" && gd.Kind != "nn")
+                    r.Errors.Add($"{where}: guidance.kind must be 'pronav', 'ballistic', or 'nn' (got '{gd.Kind}')");
+                else if (gd.Kind == "nn")
+                {
+                    if (string.IsNullOrEmpty(gd.Policy))
+                        r.Errors.Add($"{where}: guidance.kind 'nn' requires guidance.policy");
+                    else if (!models.TryResolvePolicy(gd.Policy!, out _, out _, out string pErr))
+                        r.Errors.Add($"{where}: guidance.policy '{gd.Policy}': {pErr}");
+                }
+                else if (!string.IsNullOrEmpty(gd.Policy))
+                    r.Warnings.Add($"{where}: guidance.policy is ignored for kind '{gd.Kind}'");
+            }
         }
         return r;
     }

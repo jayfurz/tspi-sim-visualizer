@@ -164,7 +164,7 @@ public static class SceneEngine
 
                 uint ord = nextOrd++;
                 var (traj, events) = IntegrateMunition(
-                    mun, mmodel!, env, m.Seed, dt, launchT.Value,
+                    mun, mmodel!, models, env, m.Seed, dt, launchT.Value,
                     parentTrack, targetTrack,
                     ord, aircraftOrd[mun.Target], m.Scene.OriginLla.AltM, m.Scene.DurationS);
                 yield return new Produced
@@ -228,7 +228,7 @@ public static class SceneEngine
                 Id = mun.Id, Model = mun.Model, Target = mun.Target, Launch = mun.Launch, Guidance = mun.Guidance,
             };
             var (traj, events) = IntegrateMunition(
-                munSpec, mmodel!, env, a.Seed, dt, launchT.Value,
+                munSpec, mmodel!, models, env, a.Seed, dt, launchT.Value,
                 parentTrack, targetTrack, ord, target.Ord, result.Origin.AltM, durationS);
             result.OrdToId[ord] = mun.Id;
             result.Entities.Add(new EntityTrajectory
@@ -348,17 +348,36 @@ public static class SceneEngine
 
     // ---------------- munition ----------------
 
+    /// <summary>Manifest guidance spec -> law. The validator has already vetted kinds and
+    /// policy resolvability; failures here are hard errors, not silent fallbacks.</summary>
+    private static IGuidanceLaw? BuildGuidanceLaw(GuidanceSpec? g, VehicleModel model, ModelLibrary models)
+    {
+        switch (g?.Kind ?? "pronav")
+        {
+            case "ballistic":
+                return null;
+            case "pronav":
+                return new PronavLaw(g?.Gain ?? model.PronavGainDefault);
+            case "nn":
+                if (string.IsNullOrEmpty(g!.Policy))
+                    throw new InvalidOperationException("guidance.kind 'nn' requires guidance.policy");
+                if (!models.TryResolvePolicy(g.Policy!, out var policy, out _, out string err))
+                    throw new InvalidOperationException($"guidance policy '{g.Policy}': {err}");
+                return new MlpGuidanceLaw(policy!);
+            default:
+                throw new InvalidOperationException($"unknown guidance.kind '{g!.Kind}'");
+        }
+    }
+
     private static (Trajectory, List<TspiEventEntry>) IntegrateMunition(
-        MunitionSpec mun, VehicleModel model, Environment env, ulong seed, double dt, double launchSec,
-        ITargetTrack parentTrack, ITargetTrack targetTrack, uint ord, uint targetOrd,
+        MunitionSpec mun, VehicleModel model, ModelLibrary models, Environment env, ulong seed, double dt,
+        double launchSec, ITargetTrack parentTrack, ITargetTrack targetTrack, uint ord, uint targetOrd,
         double originAltM, double durationS)
     {
         var events = new List<TspiEventEntry>();
         var start = parentTrack.SampleAt(launchSec);
         var state = new MotionState { Pos = start.Pos, Vel = start.Vel };
-        bool guided = (mun.Guidance?.Kind ?? "pronav") == "pronav";
-        double navGain = mun.Guidance?.Gain ?? model.PronavGainDefault;
-        var dyn = new MunitionDynamics(model, navGain, launchSec, guided);
+        var dyn = new MunitionDynamics(model, BuildGuidanceLaw(mun.Guidance, model, models), launchSec);
         var windSampler = env.CreateSampler(new RngStream(seed, "wind:" + mun.Id));
 
         var traj = new Trajectory { T0Sec = launchSec, DtSec = dt };
@@ -430,6 +449,14 @@ public static class SceneEngine
             if (t >= endT - 1e-9) { terminal = "expire"; break; }
 
             double rho = env.Density(state.Pos.Z, originAltM);
+            // Hold-across-step laws (learned policies): evaluate once per sample against
+            // the air-relative state, then RK4 integrates the held command (ZOH) so the
+            // policy never sees mid-step states. Pronav skips this and stays per-stage.
+            if (dyn.WantsHeldCommand)
+            {
+                Vec3d wind0 = windSampler.Wind(originAltM - state.Pos.Z);
+                dyn.UpdateHeldCommand(t, new MotionState { Pos = state.Pos, Vel = state.Vel - wind0 }, tgtNow);
+            }
             state = Rk4(state, t, dt, (tt, s) =>
             {
                 Vec3d wind = windSampler.Wind(originAltM - s.Pos.Z);

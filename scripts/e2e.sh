@@ -17,6 +17,7 @@ step "validate manifests"
 $TSPI validate schemas/examples/minimal.json
 $TSPI validate schemas/examples/intercept.json
 $TSPI validate schemas/examples/all-maneuvers.json
+$TSPI validate schemas/examples/nn-intercept.json
 
 step "run intercept scenario"
 $TSPI run schemas/examples/intercept.json -o "$WORK/run.tspi"
@@ -24,6 +25,10 @@ $TSPI run schemas/examples/intercept.json -o "$WORK/run.tspi"
 step "determinism: second run is byte-identical"
 $TSPI run schemas/examples/intercept.json -o "$WORK/run2.tspi" --quiet
 $TSPI diff "$WORK/run.tspi" "$WORK/run2.tspi"
+
+step "learned (nn) guidance: run + weights hash in provenance"
+$TSPI run schemas/examples/nn-intercept.json -o "$WORK/nn.tspi" | grep -E "cpa|intercept"
+$TSPI inspect "$WORK/nn.tspi" --provenance | grep -F "generic-nn-losrate" > /dev/null && echo "policy hash in provenance ok"
 
 step "measured-TSPI import: export -> reimport -> positions identical"
 $TSPI export "$WORK/run.tspi" --format csv -o "$WORK/measured.csv"

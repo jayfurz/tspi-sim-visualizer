@@ -1,0 +1,46 @@
+{
+  "schema": "tspi-scenario/1",
+  "name": "nn-intercept",
+  "seed": 7,
+  "scene": {
+    "origin_lla": { "lat_deg": 34.9061, "lon_deg": -117.8839, "alt_m": 700.0 },
+    "epoch": "2026-07-11T18:00:00Z",
+    "duration_s": 70.0,
+    "dt_s": 0.01
+  },
+  "output": { "trajectory_file": "runs/{name}-{seed:04}.tspi" },
+  "entities": [
+    {
+      "id": "blue-01",
+      "team": "blue",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": {
+        "pos_ned_m": [0, 0, -8000],
+        "vel_ned_mps": [300, 0, 0]
+      },
+      "munitions": [
+        {
+          "id": "blue-01-aam-1",
+          "model": "generic-aam",
+          "target": "red-01",
+          "launch": { "when": "range_to_target", "less_than_m": 35000 },
+          "guidance": { "kind": "nn", "policy": "generic-nn-losrate" }
+        }
+      ]
+    },
+    {
+      "id": "red-01",
+      "team": "red",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": {
+        "pos_ned_m": [46000, 3000, -8000],
+        "vel_ned_mps": [-260, 0, 0]
+      },
+      "maneuvers": [
+        { "at_s": 8.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 110, "g_limit": 5 } }
+      ]
+    }
+  ]
+}

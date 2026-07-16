@@ -11,11 +11,13 @@ appends, byte-identical reruns.
 
 ```bash
 # .NET 10 SDK required (https://dot.net). Unity 6000.0.x for the viewer (optional).
-cd src && dotnet test && cd ..                       # 82 tests: format, recovery, V&V, import, golden lock
+cd src && dotnet test && cd ..                       # 90 tests: format, recovery, V&V, import, guidance, golden lock
 alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
 
 tspi validate schemas/examples/intercept.json
 tspi run schemas/examples/intercept.json             # -> schemas/examples/runs/intercept-0042.tspi
+tspi run schemas/examples/nn-intercept.json          # learned (NN) guidance: hand-rolled f64 MLP,
+                                                     # weights sha-256'd into provenance
 tspi inspect schemas/examples/runs/intercept-0042.tspi --events --provenance
 
 # later munitions vs the recorded run (footer-chained append, old bytes untouched)

@@ -1,0 +1,9 @@
+{
+  "schema": "tspi-policy/1",
+  "kind": "mlp",
+  "obs": "los_v1",
+  "norm": { "range_m": 20000, "speed_mps": 1000, "omega_rps": 1, "accel_mps2": 100 },
+  "layers": [
+    { "w": [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, -30]], "b": [0, 0, 0], "act": "linear" }
+  ]
+}

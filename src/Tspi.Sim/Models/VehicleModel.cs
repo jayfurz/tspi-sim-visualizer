@@ -71,6 +71,8 @@ public sealed class ModelLibrary
     private readonly List<string> _searchDirs;
     private readonly Dictionary<string, (VehicleModel Model, string ShaHex)> _cache = new();
     private readonly Dictionary<string, string> _errors = new();
+    private readonly Dictionary<string, (GuidancePolicy Policy, string ShaHex)> _policyCache = new();
+    private readonly Dictionary<string, string> _policyErrors = new();
 
     public ModelLibrary(IEnumerable<string> searchDirs)
     {
@@ -82,13 +84,16 @@ public sealed class ModelLibrary
 
     public IReadOnlyList<string> SearchDirs => _searchDirs;
 
-    /// <summary>Hashes of every model resolved so far (name -> sha256 hex), for provenance.</summary>
+    /// <summary>Hashes of every model AND guidance policy resolved so far (name -> sha256
+    /// hex), for provenance: "same manifest, same seed" only pins the output if the
+    /// weights that flew the munitions are pinned too.</summary>
     public IReadOnlyDictionary<string, string> LoadedHashes
     {
         get
         {
             var d = new Dictionary<string, string>();
             foreach (var kv in _cache) d[kv.Key] = kv.Value.ShaHex;
+            foreach (var kv in _policyCache) d[kv.Key] = kv.Value.ShaHex;
             return d;
         }
     }
@@ -151,6 +156,64 @@ public sealed class ModelLibrary
         }
         error = "no '" + name + ".json' in search dirs [" + string.Join(", ", _searchDirs) + "]";
         _errors[name] = error;
+        return false;
+    }
+
+    /// <summary>Register an in-memory guidance policy (tests, generated policies).</summary>
+    public void AddInMemoryPolicy(string name, GuidancePolicy policy)
+    {
+        policy.Validate();
+        byte[] canonical = JsonSerializer.SerializeToUtf8Bytes(policy, Manifest.ManifestJson.Options);
+        _policyCache[name] = (policy, Manifest.ManifestJson.Sha256Hex(canonical));
+    }
+
+    /// <summary>Resolve a guidance policy ({name}.json in the same search dirs as vehicle
+    /// models); the file's SHA-256 joins LoadedHashes for provenance.</summary>
+    public bool TryResolvePolicy(string name, out GuidancePolicy? policy, out string shaHex, out string error)
+    {
+        policy = null;
+        shaHex = "";
+        error = "";
+        if (string.IsNullOrEmpty(name))
+        {
+            error = "empty policy name";
+            return false;
+        }
+        if (_policyCache.TryGetValue(name, out var hit))
+        {
+            policy = hit.Policy;
+            shaHex = hit.ShaHex;
+            return true;
+        }
+        if (_policyErrors.TryGetValue(name, out string? cachedError))
+        {
+            error = cachedError;
+            return false;
+        }
+        foreach (var dir in _searchDirs)
+        {
+            string path = Path.Combine(dir, name + ".json");
+            if (!File.Exists(path)) continue;
+            try
+            {
+                byte[] raw = File.ReadAllBytes(path);
+                var p = JsonSerializer.Deserialize<GuidancePolicy>(raw, Manifest.ManifestJson.Options)
+                        ?? throw new InvalidDataException("policy file is JSON null");
+                p.Validate();
+                _policyCache[name] = (p, Manifest.ManifestJson.Sha256Hex(raw));
+                policy = p;
+                shaHex = _policyCache[name].ShaHex;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = path + ": " + ex.Message;
+                _policyErrors[name] = error;
+                return false;
+            }
+        }
+        error = "no '" + name + ".json' in search dirs [" + string.Join(", ", _searchDirs) + "]";
+        _policyErrors[name] = error;
         return false;
     }
 
