@@ -23,7 +23,7 @@ public sealed class SceneSpec
     public OriginLla OriginLla { get; set; } = new();
     /// <summary>Absolute UTC time of sim t=0, ISO-8601.</summary>
     public string Epoch { get; set; } = "2026-01-01T00:00:00Z";
-    public double DurationS { get; set; }
+    public double DurationS { get; set; } = 100.0;
     public double DtS { get; set; } = 0.01;
     public EnvironmentSpec Environment { get; set; } = new();
 }

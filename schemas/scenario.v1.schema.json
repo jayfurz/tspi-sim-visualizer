@@ -33,7 +33,7 @@
     "scene": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["origin_lla", "duration_s"],
+      "required": ["origin_lla"],
       "properties": {
         "origin_lla": {
           "type": "object",
@@ -46,7 +46,7 @@
           }
         },
         "epoch": { "type": "string", "format": "date-time", "default": "2026-01-01T00:00:00Z" },
-        "duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "duration_s": { "type": "number", "exclusiveMinimum": 0, "default": 100, "description": "Size to cover the last launch + munition fly-out (max_flight_time_s); the validator warns when a fly-out would be truncated" },
         "dt_s": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.01 },
         "environment": { "$ref": "#/$defs/environment" }
       }

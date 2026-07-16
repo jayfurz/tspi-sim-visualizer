@@ -206,6 +206,10 @@ public static class ManifestValidator
                     Warn($"{mwhere}: no launch condition; it will be carried but never employed");
                 if (mun.Launch is LaunchAtTime lt && (lt.AtS < 0 || lt.AtS > s.DurationS))
                     Warn($"{mwhere}: launch at_s={lt.AtS}s is outside the scenario window");
+                if (mun.Launch is LaunchAtTime lt2 && mm != null
+                    && lt2.AtS + mm.MaxFlightTimeS > s.DurationS)
+                    Warn($"{mwhere}: fly-out may be truncated — launch at t={lt2.AtS}s + " +
+                         $"max_flight_time_s={mm.MaxFlightTimeS}s exceeds scene.duration_s={s.DurationS}s");
                 if (mun.Launch is LaunchAtRange lr && lr.LessThanM <= 0)
                     Err($"{mwhere}: launch less_than_m must be > 0");
                 if (mun.Guidance is { } gd)
