@@ -38,6 +38,9 @@ namespace TspiViewer
         public double MaxTime => _maxT;
         public bool Loaded => _reader != null;
         public IReadOnlyList<EntityView> Views => _views;
+        private static readonly List<TspiEventEntry> NoEvents = new();
+        /// <summary>Footer event log of the loaded file (launch/cpa/intercept/...), for HUD timelines.</summary>
+        public IReadOnlyList<TspiEventEntry> Events => _reader != null ? _reader.Events : NoEvents;
 
         private sealed class EntityViewImpl { }
 
@@ -54,8 +57,12 @@ namespace TspiViewer
                 Load(filePath);
         }
 
-        public void Load(string path)
+        /// <summary>Open a file (replacing any loaded one). With keepTime, playback stays at
+        /// the current time (clamped) — the editor's regenerate-and-resume path.</summary>
+        public void Load(string path, bool keepTime = false)
         {
+            double prevT = _timeSec;
+            bool hadFile = _reader != null;
             Unload();
             _reader = TspiReader.Open(path);
             _minT = double.MaxValue;
@@ -66,7 +73,9 @@ namespace TspiViewer
                 _maxT = System.Math.Max(_maxT, _reader.EndSec(e));
                 CreateView(e);
             }
-            _timeSec = _minT;
+            _timeSec = keepTime && hadFile
+                ? System.Math.Max(_minT, System.Math.Min(_maxT, prevT))
+                : _minT;
         }
 
         private void CreateView(TspiEntityEntry e)

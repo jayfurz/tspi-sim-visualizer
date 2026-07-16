@@ -14,9 +14,41 @@ the headless `tspi` CLI produces files; this project renders them.
    `tspi run schemas/examples/intercept.json`), press Play.
 
 You get: one object per entity (team-colored trails: blue/red/gray), spawn/despawn on
-launch/intercept, pause/scrub/loop and 0.25–16× time dilation from the HUD. Scrubbing is
-O(1) per entity — pos/vel Hermite + attitude slerp over the mmap, courtesy of
-`TspiReader.TrySampleAt`.
+launch/intercept, pause/scrub/loop and 0.25–16× time dilation from the HUD, and event
+ticks (launch/CPA/intercept) on the scrub bar. Scrubbing is O(1) per entity — pos/vel
+Hermite + attitude slerp over the mmap, courtesy of `TspiReader.TrySampleAt`.
+
+## Scenario editing (edit → run → scrub)
+
+Add **ScenarioEditController** to the same GameObject and set:
+
+- `scenarioPath` — a scenario manifest (absolute, or relative to the Unity project
+  root), e.g. `../../schemas/examples/intercept.json`. **Saved in place on regenerate.**
+- `tspiExecutable` / `tspiDllPath` — a self-contained `tspi` binary, or `dotnet` plus
+  the absolute path to `src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll`.
+- `workingDirectory` — the repo root, so `./models` resolves (or set `modelsDir`).
+
+Controls: **Tab** toggles edit mode. In edit mode, click an entity marker to select,
+**left-drag** moves it (altitude preserved), **right-drag** points its initial heading
+at the cursor; the side panel edits speed/heading/altitude, cycles team, adds and
+deletes entities. In either mode, the maneuver buttons add a segment for the selected
+entity **at the current playback time** (snapped to the dt grid), and the panel lists
+and deletes existing segments.
+
+Every edit saves the manifest and re-runs the real CLI (`tspi run` validates first;
+~100 ms for a 70 s engagement), then reloads the preview **at the time you were
+watching**. The determinism contract makes that seamless: maneuvers are command
+timelines and RNG streams are per-entity, so everything before the edit time replays
+byte-identically — locked by the `ManeuverAtT_LeavesPrefixByteIdentical…` test in
+`ScenarioDocumentTests`. Regenerating feels like branching the world from the current
+moment. Unity still never simulates: the preview on screen is always the sim's
+own output. Preview files alternate under `Application.temporaryCachePath` so the
+mmap'd file currently playing is never overwritten.
+
+The manifest tree itself is the edit document (`ScenarioDocument` in `Tspi.Core`, via
+MiniJson) — fields the editor doesn't know about survive round-trips, and semantic
+errors surface from the CLI's validator in the status line. Desktop editor/player only
+(child-process spawn is unavailable on mobile/web).
 
 ## Notes & known limits
 

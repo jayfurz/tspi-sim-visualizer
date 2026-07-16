@@ -11,7 +11,7 @@ appends, byte-identical reruns.
 
 ```bash
 # .NET 10 SDK required (https://dot.net). Unity 6000.0.x for the viewer (optional).
-cd src && dotnet test && cd ..                       # 75 tests: format, recovery, V&V, import, golden lock
+cd src && dotnet test && cd ..                       # 82 tests: format, recovery, V&V, import, golden lock
 alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
 
 tspi validate schemas/examples/intercept.json
@@ -51,7 +51,14 @@ Create an empty scene, add `TspiPlaybackController` (+ `PlaybackHud`) to a GameO
 point `filePath` at a `.tspi`, press Play: per-entity objects with team-colored trails,
 scrubbing, pause, 0.25–16× time dilation. The viewer **never simulates** — it interpolates
 recorded samples (Hermite position, slerped attitude), so scrubbing a million-sample file
-is O(1) per entity. See `unity/README.md` for georeferencing (Cesium) notes.
+is O(1) per entity.
+
+Add **ScenarioEditController** to the same GameObject and the viewer becomes a scenario
+editor: drag entities, retarget headings, add maneuvers *at the current playback time* —
+each edit saves the manifest, re-runs the real `tspi` CLI (~100 ms), and resumes playback
+at the same moment. Determinism means everything before the edit replays byte-identically,
+so it feels like branching the world from "now". See `unity/README.md` for setup and
+georeferencing (Cesium) notes.
 
 ## Documentation
 

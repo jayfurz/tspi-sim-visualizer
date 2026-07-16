@@ -21,7 +21,7 @@ namespace TspiViewer
             if (!_pb.Loaded) return;
             const float pad = 12f;
             float w = Screen.width - 2 * pad;
-            var area = new Rect(pad, Screen.height - 96, w, 84);
+            var area = new Rect(pad, Screen.height - 108, w, 96);
             GUILayout.BeginArea(area, GUI.skin.box);
 
             GUILayout.BeginHorizontal();
@@ -42,7 +42,30 @@ namespace TspiViewer
             if (!Mathf.Approximately((float)t, (float)_pb.TimeSec))
                 _pb.Seek(t);
 
+            // Event ticks under the scrub bar (footer event log: launch/cpa/intercept/...).
+            if (Event.current.type == EventType.Repaint && _pb.MaxTime > _pb.MinTime)
+            {
+                Rect r = GUILayoutUtility.GetLastRect();
+                double span = _pb.MaxTime - _pb.MinTime;
+                foreach (var ev in _pb.Events)
+                {
+                    float x = r.x + (float)((ev.TNs / 1e9 - _pb.MinTime) / span) * r.width;
+                    GUI.color = EventColor(ev.Kind);
+                    GUI.DrawTexture(new Rect(x - 1.5f, r.yMax + 2f, 3f, 8f), Texture2D.whiteTexture);
+                }
+                GUI.color = Color.white;
+            }
+
             GUILayout.EndArea();
         }
+
+        private static Color EventColor(string kind) => kind switch
+        {
+            "launch" => new Color(1f, 0.9f, 0.2f),
+            "cpa" => new Color(0.2f, 0.9f, 1f),
+            "intercept" => new Color(1f, 0.3f, 0.25f),
+            "ground_impact" => new Color(0.7f, 0.45f, 0.2f),
+            _ => Color.gray,
+        };
     }
 }

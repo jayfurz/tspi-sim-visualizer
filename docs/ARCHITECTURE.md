@@ -20,7 +20,12 @@ measured.csv ──► tspi import ─────────────┤  m
 1. **Unity never simulates.** The game loop is variable-dt, float32, and frame-coupled —
    wrong for deterministic TSPI. Unity consumes `.tspi` files through the same
    `Tspi.Core` reader the CLI uses, interpolating poses at render time (Hermite position
-   from stored pos+vel, slerped attitude).
+   from stored pos+vel, slerped attitude). The scenario *editor* keeps this contract:
+   it authors manifest JSON (`ScenarioDocument`, shared via `Tspi.Core`) and shells out
+   to the tspi CLI for every preview, so the trajectory on screen is always the real
+   sim's output — and because edits are command-timeline edits, the run before the edit
+   time replays byte-identically, which is what makes "regenerate and resume at the
+   same t" seamless.
 2. **The sim is a headless CLI.** Fixed timestep (RK4), double-precision state, one
    deterministic RNG stream per (seed, purpose, entity). This is what makes `tspi sweep`
    an embarrassingly-parallel Monte Carlo: runs/s scales linearly with cores; the
@@ -99,13 +104,14 @@ path — out of scope for v1, and called out here rather than hidden.
 docs/                 FORMAT.md (normative), CONVENTIONS.md, this file
 schemas/              JSON Schemas + examples/ (validated in CI, golden.json locks format)
 models/               notional vehicle models (sha-256'd into file provenance)
-src/Tspi.Core/        shared format+math library == Unity package com.tspi.core
+src/Tspi.Core/        shared format+math+manifest-authoring library == Unity package com.tspi.core
 src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, pronav, wind, RK4),
                       measured-TSPI importer (CSV -> fixed-dt resample)
 src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/import/inspect/recover/export/diff)
 src/Tspi.Tests/       xUnit: format round-trip, recovery, analytic V&V, golden lock
 tools/tspi_py/        numpy mmap reader + pytest against the same golden file
-unity/TspiViewer/     Unity 6000.0.x playback client (never simulates)
+unity/TspiViewer/     Unity 6000.0.x playback + scenario-editing client (never simulates;
+                      previews shell out to the tspi CLI)
 scripts/              e2e.sh, check_schemas.py
 ```
 
