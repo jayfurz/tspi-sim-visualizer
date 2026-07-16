@@ -243,11 +243,6 @@ namespace Tspi.Core.Authoring
             };
         }
 
-        public static Dictionary<string, object> LateralHold()
-        {
-            return new Dictionary<string, object> { { "kind", "hold" } };
-        }
-
         public static Dictionary<string, object> VerticalHoldAlt(double altMslM, double rateMps = 20.0)
         {
             return new Dictionary<string, object>

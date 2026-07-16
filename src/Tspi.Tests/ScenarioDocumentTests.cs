@@ -140,7 +140,7 @@ public class ScenarioDocumentTests : IDisposable
         var doc = ScenarioDocument.New("m", 0, 0, 0, 100, 0.01);
         doc.AddEntity("a", "blue", "generic-fighter", new Vec3d(0, 0, -3000), new Vec3d(200, 0, 0));
 
-        doc.AddManeuver("a", 40.0, lateral: ScenarioDocument.LateralHold());
+        doc.AddManeuver("a", 40.0, lateral: ScenarioDocument.LateralTurnToHeading(90.0));
         doc.AddManeuver("a", 20.0037, speed: ScenarioDocument.SpeedSet(180));
 
         Assert.Equal(2, doc.Maneuvers("a").Count);

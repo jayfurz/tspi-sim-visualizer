@@ -21,10 +21,7 @@
         { "at_s": 10.0, "lateral":  { "kind": "turn_to_heading", "heading_deg": 90, "g_limit": 5 } },
         { "at_s": 20.0, "vertical": { "kind": "hold_alt", "alt_msl_m": 8000, "rate_mps": 50 } },
         { "at_s": 35.0, "lateral":  { "kind": "turn_to_heading", "heading_deg": 270, "g_limit": 6 },
-                        "vertical": { "kind": "delta_alt", "delta_m": -1500, "rate_mps": 40 } },
-        { "at_s": 48.0, "lateral":  { "kind": "hold" },
-                        "vertical": { "kind": "hold" },
-                        "speed":    { "kind": "hold" } }
+                        "vertical": { "kind": "delta_alt", "delta_m": -1500, "rate_mps": 40 } }
       ]
     }
   ]

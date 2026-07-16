@@ -340,12 +340,9 @@ internal sealed class LateralCmdConverter : UnionConverter<LateralCmd>
 
     protected override LateralCmd FromElement(string kind, JsonElement obj) => kind switch
     {
-        "hold" => Done(obj, new LateralHold()),
         "turn_to_heading" => TurnFrom(obj),
-        _ => throw new JsonException($"unknown lateral kind '{kind}' (hold | turn_to_heading)"),
+        _ => throw new JsonException($"unknown lateral kind '{kind}' (turn_to_heading)"),
     };
-
-    private LateralCmd Done(JsonElement obj, LateralCmd cmd) { RejectUnknown(obj); return cmd; }
 
     private LateralCmd TurnFrom(JsonElement obj)
     {
@@ -359,7 +356,6 @@ internal sealed class LateralCmdConverter : UnionConverter<LateralCmd>
 
     protected override (string, Dictionary<string, object?>) ToFields(LateralCmd value) => value switch
     {
-        LateralHold => ("hold", new Dictionary<string, object?>()),
         LateralTurnToHeading t => ("turn_to_heading", new Dictionary<string, object?>
             { { "heading_deg", t.HeadingDeg }, { "g_limit", t.GLimit } }),
         _ => throw new JsonException("unknown LateralCmd"),
@@ -374,9 +370,6 @@ internal sealed class VerticalCmdConverter : UnionConverter<VerticalCmd>
     {
         switch (kind)
         {
-            case "hold":
-                RejectUnknown(obj);
-                return new VerticalHold();
             case "hold_alt":
                 RejectUnknown(obj, "alt_msl_m", "rate_mps");
                 return new VerticalHoldAlt { AltMslM = GetDouble(obj, "alt_msl_m"), RateMps = GetDouble(obj, "rate_mps", 20.0) };
@@ -384,13 +377,12 @@ internal sealed class VerticalCmdConverter : UnionConverter<VerticalCmd>
                 RejectUnknown(obj, "delta_m", "rate_mps");
                 return new VerticalDeltaAlt { DeltaM = GetDouble(obj, "delta_m"), RateMps = GetDouble(obj, "rate_mps", 20.0) };
             default:
-                throw new JsonException($"unknown vertical kind '{kind}' (hold | hold_alt | delta_alt)");
+                throw new JsonException($"unknown vertical kind '{kind}' (hold_alt | delta_alt)");
         }
     }
 
     protected override (string, Dictionary<string, object?>) ToFields(VerticalCmd value) => value switch
     {
-        VerticalHold => ("hold", new Dictionary<string, object?>()),
         VerticalHoldAlt h => ("hold_alt", new Dictionary<string, object?>
             { { "alt_msl_m", h.AltMslM }, { "rate_mps", h.RateMps } }),
         VerticalDeltaAlt d => ("delta_alt", new Dictionary<string, object?>
@@ -407,20 +399,16 @@ internal sealed class SpeedCmdConverter : UnionConverter<SpeedCmd>
     {
         switch (kind)
         {
-            case "hold":
-                RejectUnknown(obj);
-                return new SpeedHold();
             case "set":
                 RejectUnknown(obj, "speed_mps", "accel_mps2");
                 return new SpeedSet { SpeedMps = GetDouble(obj, "speed_mps"), AccelMps2 = GetDouble(obj, "accel_mps2", 3.0) };
             default:
-                throw new JsonException($"unknown speed kind '{kind}' (hold | set)");
+                throw new JsonException($"unknown speed kind '{kind}' (set)");
         }
     }
 
     protected override (string, Dictionary<string, object?>) ToFields(SpeedCmd value) => value switch
     {
-        SpeedHold => ("hold", new Dictionary<string, object?>()),
         SpeedSet s => ("set", new Dictionary<string, object?>
             { { "speed_mps", s.SpeedMps }, { "accel_mps2", s.AccelMps2 } }),
         _ => throw new JsonException("unknown SpeedCmd"),

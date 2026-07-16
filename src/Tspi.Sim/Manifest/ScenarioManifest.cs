@@ -114,7 +114,6 @@ public sealed class ManeuverSegment
 }
 
 public abstract class LateralCmd { }
-public sealed class LateralHold : LateralCmd { }
 public sealed class LateralTurnToHeading : LateralCmd
 {
     public double HeadingDeg { get; set; }
@@ -122,8 +121,6 @@ public sealed class LateralTurnToHeading : LateralCmd
 }
 
 public abstract class VerticalCmd { }
-/// <summary>Level off: drive vertical speed to zero.</summary>
-public sealed class VerticalHold : VerticalCmd { }
 public sealed class VerticalHoldAlt : VerticalCmd
 {
     public double AltMslM { get; set; }
@@ -137,7 +134,6 @@ public sealed class VerticalDeltaAlt : VerticalCmd
 }
 
 public abstract class SpeedCmd { }
-public sealed class SpeedHold : SpeedCmd { }
 public sealed class SpeedSet : SpeedCmd
 {
     public double SpeedMps { get; set; }

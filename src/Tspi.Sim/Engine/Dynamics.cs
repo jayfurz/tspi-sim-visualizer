@@ -92,7 +92,6 @@ public sealed class AircraftDynamics : IAircraftDynamics
         switch (cmd)
         {
             case null: break;
-            case SpeedHold: _speedHold = true; break;
             case SpeedSet s:
                 _speedHold = false;
                 _cmdSpeed = System.Math.Min(s.SpeedMps, _model.SpeedMaxMps);
@@ -106,7 +105,6 @@ public sealed class AircraftDynamics : IAircraftDynamics
         switch (cmd)
         {
             case null: break;
-            case LateralHold: _headingHold = true; _cmdHeadingRad = currentHeadingRad; break;
             case LateralTurnToHeading t:
                 _headingHold = false;
                 _cmdHeadingRad = t.HeadingDeg * MathUtil.Deg2Rad;
@@ -120,7 +118,6 @@ public sealed class AircraftDynamics : IAircraftDynamics
         switch (cmd)
         {
             case null: break;
-            case VerticalHold: _vertMode = 0; break;
             case VerticalHoldAlt h: _vertMode = 1; _cmdAltMsl = h.AltMslM; _cmdRate = h.RateMps; break;
             case VerticalDeltaAlt d: _vertMode = 2; _cmdAltMsl = currentAltMsl + d.DeltaM; _cmdRate = d.RateMps; break;
         }

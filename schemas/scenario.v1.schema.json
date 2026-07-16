@@ -136,10 +136,6 @@
       "oneOf": [
         {
           "type": "object", "additionalProperties": false,
-          "required": ["kind"], "properties": { "kind": { "const": "hold" } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
           "required": ["kind", "heading_deg"],
           "properties": {
             "kind": { "const": "turn_to_heading" },
@@ -151,10 +147,6 @@
     },
     "vertical": {
       "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind"], "properties": { "kind": { "const": "hold" } }
-        },
         {
           "type": "object", "additionalProperties": false,
           "required": ["kind", "alt_msl_m"],
@@ -177,10 +169,6 @@
     },
     "speed": {
       "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind"], "properties": { "kind": { "const": "hold" } }
-        },
         {
           "type": "object", "additionalProperties": false,
           "required": ["kind", "speed_mps"],
