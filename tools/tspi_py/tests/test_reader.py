@@ -104,3 +104,45 @@ def test_environment_persisted(f):
 def test_times_are_implicit_fixed_dt(f):
     t = f.times("blue-01")
     np.testing.assert_allclose(np.diff(t), 0.1, atol=1e-12)
+
+
+def test_engagements_view(f):
+    from tspi_py import engagements
+
+    engs = engagements(GOLDEN)
+    assert len(engs) == 1
+    e = engs[0]
+    assert e.schema == "tspi-engagement/1"
+    # launch block: the dart's birth record, target sampled at the same instant
+    assert e.launch.t_s == pytest.approx(0.5)
+    assert e.launch.munition_id == "dart-01"
+    assert e.launch.launcher_id == "blue-01"
+    assert e.launch.target_id == "red-01"
+    m0 = f.samples("dart-01")[0]
+    np.testing.assert_array_equal(e.launch.pos_ned_m, m0["pos"])
+    idx = round((0.5 - f.entity("red-01").t0_s) / f.dt_s)
+    np.testing.assert_array_equal(
+        e.launch.target_pos_ned_m, f.samples("red-01")[idx]["pos"])
+    # target block: zero-copy view, windowed to the fly-out [launch, terminal]
+    assert e.target.pos_ned_m.base is not None
+    expire_t = next(ev.t_s for ev in f.events if ev.kind == "expire")
+    assert e.target.t_s[0] == pytest.approx(0.5)          # starts at launch
+    assert e.target.t_s[-1] == pytest.approx(expire_t, abs=f.dt_s)
+    assert e.target.t0_s == pytest.approx(0.5)
+    assert e.target.dt_s == pytest.approx(f.dt_s)
+    # outcome: the golden dart expires (no intercept), miss unavailable
+    assert e.outcome.terminal == "expire"
+    assert np.isnan(e.outcome.miss_m)
+
+
+def test_engagements_windowing(f):
+    from tspi_py import engagements
+
+    full = engagements(GOLDEN, window_s=None)[0]
+    assert full.target.pos_ned_m.shape == (f.entity("red-01").samples, 3)
+    assert full.target.t0_s == pytest.approx(0.0)
+
+    # cap tighter than the fly-out: window wins over the terminal event
+    tight = engagements(GOLDEN, window_s=1.0)[0]
+    assert tight.target.t_s[0] == pytest.approx(0.5)
+    assert tight.target.t_s[-1] == pytest.approx(1.5, abs=f.dt_s)
