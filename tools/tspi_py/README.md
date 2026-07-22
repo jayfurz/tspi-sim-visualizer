@@ -19,6 +19,17 @@ f.provenance                  # manifest+model hashes, seed, sim version per wri
 f.to_arrow("blue-01")         # pyarrow Table (requires the 'arrow' extra) -> parquet etc.
 ```
 
+Derived views (rebuilt from the runs on every call — the `.tspi` files stay the
+single source of truth):
+
+```python
+from tspi_py import engagements, dcv_flyouts
+
+engagements("run.tspi")       # tspi-engagement/1: one record per launch event (docs/ICD-NN.md)
+dcv_flyouts("run.tspi")       # tspi-dcv/1: the fly-out in launch-centred downrange/
+                              # crossrange/vertical coordinates (see tspi_py/dcv.py)
+```
+
 The mmap is read-only and lazy: a 226 MB sweep directory on the HPC box costs page-cache,
 not RAM copies. `tests/` runs against the committed golden file written by the C# sim —
 the cross-language contract test.
