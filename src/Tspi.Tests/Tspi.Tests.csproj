@@ -13,5 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="../Tspi.Core/Tspi.Core.csproj" />
     <ProjectReference Include="../Tspi.Sim/Tspi.Sim.csproj" />
+    <ProjectReference Include="../Tspi.Cli/Tspi.Cli.csproj" />
   </ItemGroup>
 </Project>

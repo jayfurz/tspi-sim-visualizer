@@ -27,6 +27,7 @@ public static class Program
                 "recover" => RecoverCommand.Run(rest),
                 "export" => ExportCommand.Run(rest),
                 "diff" => DiffCommand.Run(rest),
+                "serve" => ServeCommand.Run(rest),
                 "-h" or "--help" or "help" => PrintUsageReturn(),
                 _ => Unknown(verb),
             };
@@ -69,6 +70,8 @@ usage: tspi <command> [options]
   recover <file.tspi> [--apply]             repair a torn append (dry-run without --apply)
   export <file.tspi> --format csv [--entity ID] [-o out.csv]
   diff <a.tspi> <b.tspi> [--tol-m M]        compare two runs (determinism check)
+  serve [file.tspi] [--port N] [--bind ADDR] [--root DIR] [--out-dir DIR] [--models DIR]
+        [--viewer DIR]                      serve the web viewer + run/validate API
 
 Models are resolved as <name>.json from --models dirs (default: ./models).");
     }

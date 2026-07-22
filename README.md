@@ -11,7 +11,7 @@ appends, byte-identical reruns.
 
 ```bash
 # .NET 10 SDK required (https://dot.net). Unity 6000.0.x for the viewer (optional).
-cd src && dotnet test && cd ..                       # 90 tests: format, recovery, V&V, import, guidance, golden lock
+cd src && dotnet test && cd ..                       # 96 tests: format, recovery, V&V, import, guidance, serve, golden lock
 alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
 
 tspi validate schemas/examples/intercept.json
@@ -34,6 +34,9 @@ python3 -c "import json;print(sum(1 for l in open('/tmp/sweep/index.jsonl')))"
 
 # ...or fan a campaign across a cluster instead of one box:
 tspi sweep schemas/examples/intercept.json --seeds 1:10000 --emit slurm --out-dir /data/camp > run.sbatch
+
+# browser playback + edit loop backend: serves web/viewer plus run/validate endpoints
+tspi serve schemas/examples/runs/intercept-0042.tspi   # prints a deep-link URL to open
 
 # analysis (numpy, zero-copy mmap)
 pip install -e "tools/tspi_py[test]"
@@ -68,7 +71,9 @@ georeferencing (Cesium) notes.
 disk: drag a `.tspi` on, get orbitable 3D trails, attitude-oriented markers, scrubbing,
 and the footer event log — parsed and rendered with hand-rolled JS/WebGL, zero
 dependencies, no build step. It exists for environments where Unity can't be approved or
-binaries can't be delivered: the whole viewer is auditable source. See `web/README.md`.
+binaries can't be delivered: the whole viewer is auditable source. `tspi serve` hosts the
+same page over http with read-only `.tspi` access plus `POST /api/run` / `/api/validate`,
+making the browser an edit-loop client of the real CLI. See `web/README.md`.
 
 ## Godot viewer (open-source engine, GDScript-only)
 

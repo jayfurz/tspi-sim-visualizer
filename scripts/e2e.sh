@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 TSPI="dotnet src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
 PYTHON="${PYTHON:-python3}"   # point at a venv python that has tspi-py + jsonschema installed
 WORK=$(mktemp -d /tmp/tspi-e2e.XXXXXX)
-trap 'rm -rf "$WORK"' EXIT
+trap 'jobs -p | xargs -r kill 2> /dev/null; rm -rf "$WORK"' EXIT
 
 step() { printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
 
@@ -60,6 +60,21 @@ wc -l "$WORK/run.csv"
 step "monte carlo sweep (50 seeds)"
 $TSPI sweep schemas/examples/intercept.json --seeds 1:50 --out-dir "$WORK/sweep" --quiet
 wc -l "$WORK/sweep/index.jsonl"
+
+step "tspi serve: viewer + run/validate endpoints"
+$TSPI serve --port 18321 --root "$WORK" --out-dir "$WORK/runs" > /dev/null 2>&1 &
+sleep 1
+curl -sf http://127.0.0.1:18321/ | grep -q app.js
+curl -sf -X POST --data-binary @schemas/examples/intercept.json \
+  http://127.0.0.1:18321/api/validate | grep -q '"valid": true'
+SERVE_FILE=$(curl -sf -X POST --data-binary @schemas/examples/intercept.json \
+  http://127.0.0.1:18321/api/run | "$PYTHON" -c 'import json,sys;print(json.load(sys.stdin)["file"])')
+# Fetch to disk, then check the magic: `curl | head -c 4` would die of SIGPIPE on the
+# left of `&&`, where set -e ignores it — the check would silently not check.
+curl -sf "http://127.0.0.1:18321$SERVE_FILE" -o "$WORK/served.tspi"
+head -c 4 "$WORK/served.tspi" | grep -q TSPI
+echo "serve ok"
+kill %% 2> /dev/null
 
 step "json schema conformance"
 "$PYTHON" scripts/check_schemas.py > /dev/null && echo "schemas ok"

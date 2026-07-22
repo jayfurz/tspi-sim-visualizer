@@ -23,7 +23,7 @@ server — and drag a `.tspi` onto it. Nothing is uploaded; the file is read in-
   (click to follow; rows dim outside the entity's alive window), footer event log
   (click to seek).
 - **Deep links** (http only): `index.html?file=<url>&t=<sec>` fetches a served file
-  and opens paused at `t` — the hook the future `tspi serve` edit loop will use.
+  and opens paused at `t` — the hook `tspi serve` uses (below).
 
 Entities appear at their `t0` and vanish at their last sample, exactly as recorded —
 a munition doesn't exist before `launch` and disappears at `intercept`/`ground_impact`.
@@ -44,11 +44,30 @@ python viewer/tests/ref_dump.py run.tspi ../tools/tspi_py/tests/data/golden-v1.t
 node viewer/tests/parser.test.mjs ref.json run.tspi ../tools/tspi_py/tests/data/golden-v1.tspi
 ```
 
+## tspi serve — the edit loop backend
+
+`tspi serve` (a verb on the .NET CLI, `src/Tspi.Cli/Commands/ServeCommand.cs`) hosts
+this page over http and adds the endpoints the Unity edit loop gets by shelling out —
+the browser stays a pure UI shell, the CLI stays the only thing that simulates:
+
+```sh
+tspi serve runs/intercept-0042.tspi        # serves the viewer, prints a deep-link URL
+curl -X POST --data-binary @scenario.json localhost:8080/api/validate
+curl -X POST --data-binary @scenario.json localhost:8080/api/run?seed=7
+#   -> {file: "/files/runs/serve/…tspi", viewer: "/?file=…", events: […], …}
+```
+
+`GET /files/<path>.tspi` serves any run under the serve root (`--root`, default cwd)
+read-only; everything else 404s. Runs land in `--out-dir` (default `runs/serve/`).
+POST an edited manifest to `/api/run`, open the returned `viewer` URL with `&t=<sec>`,
+and determinism gives the Unity-style resume: everything before the edit replays
+identically. Binds `127.0.0.1` only unless `--bind` says otherwise. Integration tests:
+`src/Tspi.Tests/ServeTests.cs`; exercised in `scripts/e2e.sh`.
+
 ## Limits (deliberate, for now)
 
-- Playback only. The Unity-style scenario edit loop needs something that can run the
-  CLI; the plan is a `tspi serve` verb on the existing .NET CLI serving this page plus
-  run/validate endpoints, keeping the browser a pure UI shell.
+- The edit UI itself isn't in the browser yet — `/api/run` + deep links make the loop
+  scriptable (curl, editor tooling); an in-page manifest panel is the next increment.
 - No terrain/imagery. The georeference is in every file header (`origin_lla`); when
   terrain matters, CesiumJS (Apache-2.0, self-hostable) is the path that mirrors the
   Cesium-for-Unity plan in `unity/README.md`.
