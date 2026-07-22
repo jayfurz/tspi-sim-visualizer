@@ -25,5 +25,6 @@ unity/TspiViewer/obj/
 unity/TspiViewer/*.csproj
 unity/TspiViewer/*.sln
 
-# Rendered doc PDFs are regenerable artifacts (scripts/md2pdf.py)
+# Rendered doc PDFs/decks are regenerable artifacts (scripts/md2pdf.py, scripts/md2pptx.py)
 docs/*.pdf
+docs/*.pptx
