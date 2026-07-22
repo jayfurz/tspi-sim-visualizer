@@ -103,42 +103,91 @@ recorded track. Slices are zero-copy either way:
 - Target tracks are **simulation truth** (or measured truth for imported runs, tagged in
   provenance `dynamics: measured+…`). No sensor model is applied — see **OPEN-5**.
 
-### 3.4 Launch-frame variant: `tspi-dcv/1`
+### 3.4 Launch-frame variant: `tspi-dcv/1` — the fly-out struct
 
-For training/analysis in launch-centred **downrange / crossrange / vertical**
-coordinates. A separate versioned view (per §6 rule 2 — `tspi-engagement/1` is
-unchanged), rebuilt from the same runs (`tspi_py.dcv.dcv_flyouts(paths, window_s)`);
-one record per launch event. Unlike `tspi-engagement/1` it also carries the
-**munition track**. Training may consume either view; the runtime observation
-contract remains `los_v1` (§4) regardless.
+One element per engagement, in launch-centred **downrange / crossrange / vertical**
+coordinates. This section describes the struct **as it appears in the workspace** —
+file internals don't matter here; you open runs, you get `flyouts`, you plot.
+(Separate versioned id per §6; `tspi-engagement/1` is unchanged. Training may consume
+either view; the runtime observation contract stays `los_v1`, §4.)
 
-Frame, fixed per record at the launch instant:
+#### What you get
 
-| Axis | Definition |
-|---|---|
-| **D** downrange | horizontal unit vector from the munition's launch position toward the target's position at launch; falls back to the horizontal launch-velocity heading when the target is directly overhead (`frame.downrange_ref` = `target` \| `launch_velocity`) |
-| **C** crossrange | positive to the **right** of the shot line viewed from above |
-| **V** vertical | positive up (height above the launch point) |
+`flyouts` is a 1×K struct array — one element per **launch event**, ordered by input
+file, then by launch order within each run (appended engagements simply show up at
+the end next time the run is opened). For engagement `k` (MATLAB 1-based):
 
-`(D, C, V)` is a deliberate **left-handed** coordinate triple (det = −1): convenient
-for plotting/feature axes, not a dynamics frame — attitude quaternions therefore stay
-**body→NED** and are never re-expressed in DCV. `p_dcv = R·(p_ned − origin)`,
-`p_ned = origin + Rᵀ·p_dcv`.
+```matlab
+flyouts(k)
+├─ .meta                          % traceability — where this engagement came from
+│    .source                      % producing run file (char)
+│    .source_sha256               % hash pinning the exact run (char)
+│    .origin_lla        [1×3]     % lat°, lon°, alt m of the scene origin
+│    .epoch_unix_ns               % UTC of t = 0
+├─ .launch
+│    .t_s                         % launch time, seconds since epoch
+│    .munition_id  .launcher_id  .target_id      % entity names (char)
+├─ .frame                         % the DCV frame, fixed at the launch instant
+│    .origin_ned_m      [1×3]     % launch point (all DCV positions are relative to it)
+│    .dcv_from_ned      [3×3]     % rows = D/C/V unit vectors; p_dcv = R*(p_ned - origin)
+│    .downrange_ref               % 'target' (normal) | 'launch_velocity' (target overhead)
+├─ .munition                      % the fly-out itself — only this view carries it
+│    .t_s               [1×N]     % sample times, fixed dt (.dt_s, .t0_s also present)
+│    .pos_dcv_m         [N×3]     % columns: downrange, crossrange, vertical (up), meters
+│    .vel_dcv_mps       [N×3]     % same axes, m/s
+│    .att_wxyz          [N×4]     % attitude quaternion, body→NED (NOT DCV — see OPEN-12)
+│    .omega_body_rps    [N×3]     % body rates, body frame (NOT DCV — see OPEN-12)
+├─ .target                        % same fields as .munition, same time window
+└─ .outcome
+     .terminal                    % 'intercept' | 'ground_impact' | 'expire' | 'cpa' | none
+     .t_terminal_s  .miss_m       % when, and refined closest approach (NaN if n/a)
+```
 
-Record layout — `meta`, `launch` (t_s + the three ids), and `outcome` as in §3.1, plus:
+Both tracks are windowed to the fly-out: launch → terminal event, capped at
+launch + 100 s (view parameter). Typical use reads exactly like it looks:
 
-| Field | Type | Units | Description |
-|---|---|---|---|
-| `frame.origin_ned_m` | f64[3] | m | munition position at launch |
-| `frame.dcv_from_ned` | f64[3×3] | | orthogonal row matrix [D̂; Ĉ; V̂] in NED |
-| `frame.downrange_ref` | string | | which reference fixed the bearing (above) |
-| `munition.*`, `target.*` | | | both tracks, windowed to the fly-out exactly as §3.1: `dt_s`, `t0_s`, `t_s [N]`, `pos_dcv_m` f64[N×3], `vel_dcv_mps` f64[N×3], `att_wxyz` f32[N×4] (body→NED), `omega_body_rps` f32[N×3] |
+```matlab
+m = flyouts(k).munition;
+plot(m.pos_dcv_m(:,1), m.pos_dcv_m(:,3));   % height-above-launch vs downrange
+xlabel('downrange m'); ylabel('vertical m');
+```
 
-Converted positions/velocities are f64 **copies** (the rotation is computed in f64);
-velocity precision remains f32-limited by the recorded source data — shipments must
-not present it as better than that. Shipment: `tspi_py.dcv.save_mat` → single `.mat`,
-1×N struct array `flyouts` (loads as `F.flyouts(k).munition.pos_dcv_m`); MATLAB
-in-repo reader parity falls under **OPEN-1**.
+#### The frame, in words
+
+Origin at the munition's launch point. **Downrange** points along the horizontal
+line from launch toward where the target was at launch (if the target is directly
+overhead, the launch velocity heading is used instead — `frame.downrange_ref` says
+which). **Crossrange** is positive to the right of that line, seen from above.
+**Vertical** is height above the launch point, positive up. It is a plotting/feature
+frame, not a dynamics frame (as a triad it is left-handed); recover scene NED any
+time via `p_ned = origin_ned_m + dcv_from_ned' * p_dcv`.
+
+#### How you get it
+
+- **In-repo:** `tspi_py.dcv.dcv_flyouts([runs...])` rebuilds the structs in memory
+  straight from the `.tspi` runs — nothing to export or keep in sync.
+- **Shipment (MATLAB):** `tspi_py.dcv.save_mat('flyouts.mat', flys)`, then
+  `F = load('flyouts.mat'); F.flyouts(k)...` — one file per batch, regenerable at
+  will, never edited in place. (Native MATLAB reader: **OPEN-1**.)
+
+Positions/velocities are stored as double; velocity precision is inherited from the
+f32-recorded source and must not be presented as better than that.
+
+#### Adding fly-outs after the fact
+
+New trajectories enter as engagements, and the view picks them up automatically:
+
+- **Flown by the sim** (NN policy or any guidance): `tspi append run.tspi
+  addendum.json` launches new munitions against the already-recorded tracks — the
+  original bytes never change, the new launch becomes engagement K+1 on the next
+  `dcv_flyouts()` call, and the policy weights that flew it are hash-pinned in
+  provenance.
+- **Produced outside the sim** (measured or externally computed tracks):
+  `tspi import data.csv` promotes them to a first-class run; munitions can then be
+  appended against them and every engagement views in DCV like any other.
+
+There is no hand-editing of a DCV struct back into a run — the run files stay the
+single source of truth, and DCV is always derived from them.
 
 ## 4. IF-2 — Runtime inference: observation contract `los_v1`
 
@@ -234,3 +283,4 @@ sim — no ML runtime dependency; the identical forward pass is ~10 lines in any
 | OPEN-9 | Shipment format | `.mat` (cell-of-structs) + JSON | is `.mat` v5 acceptable, or is HDF5 (v7.3 / parquet) required by their toolchain? |
 | OPEN-10 | Target RCS | not modeled | proposal: optional `rcs` in `tspi-model/1` as a **class** (`small`\|`medium`\|`large`) — classes keep this repo's notional-data rule — carried additively into the `.tspi` footer entity entry and exposed in the IF-1 target block; numeric/aspect-dependent signatures would belong to the future sensor contract (OPEN-5). Are classes sufficient, and what class ↔ platform mapping do SMEs want? |
 | OPEN-11 | Track uncertainty | IC dispersions only (diagonal NED sigmas at t=0); no recorded or time-varying covariance | proposal: full 3×3 covariances as 6-element upper triangles (the rotated ellipsoid), per sample via the format's reserved layout evolution (layout 2 = +pos cov, stride 96; layout 3 = +pos & vel cov, stride 120); IF-1 target block gains `pos_cov [N×6]` additively. Truth records never carry fabricated covariance — it attaches to measured (`tspi import`) or synthesized-degraded tracks, where an authored piecewise covariance timeline (maneuver-style segments) would drive the degradation and could feed the model as an input alongside OPEN-5. Which of the three do SMEs need: fuller IC dispersion, recorded covariance, or the authored timeline? |
+| OPEN-12 | Rotational data in DCV | `tspi-dcv/1` carries attitude body→NED and body rates in the body frame; only positions/velocities are expressed in DCV (§3.4 — DCV is a left-handed plotting triple, so quaternions were deliberately not re-expressed) | do SMEs/the NN need attitude and/or body rates in a DCV-aligned convention (e.g. Euler angles about D/C/V, or a right-handed DCV variant frame for rotational states)? If yes, that ships as a new versioned view (`tspi-dcv/2`) with the convention SMEs specify |
