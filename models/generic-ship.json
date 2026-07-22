@@ -1,0 +1,9 @@
+{
+  "schema": "tspi-model/1",
+  "kind": "ship",
+  "mass_kg": 9000000,
+  "g_limit_max": 0.3,
+  "accel_long_max_mps2": 0.5,
+  "accel_vert_max_mps2": 0.1,
+  "speed_max_mps": 16.0
+}

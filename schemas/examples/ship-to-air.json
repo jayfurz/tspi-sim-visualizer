@@ -1,0 +1,67 @@
+{
+  "schema": "tspi-scenario/1",
+  "name": "ship-to-air",
+  "seed": 42,
+  "scene": {
+    "origin_lla": { "lat_deg": 33.9425, "lon_deg": -119.4622, "alt_m": 0.0 },
+    "epoch": "2026-07-11T18:00:00Z",
+    "duration_s": 70.0,
+    "dt_s": 0.01,
+    "environment": {
+      "atmosphere": "exp8500",
+      "wind": {
+        "layers": [
+          { "alt_msl_m": 0,    "from_deg": 290, "speed_mps": 7 },
+          { "alt_msl_m": 6000, "from_deg": 260, "speed_mps": 18 }
+        ],
+        "gusts": { "model": "gauss_markov", "sigma_mps": 1.2, "tau_s": 5.0 }
+      }
+    }
+  },
+  "output": { "trajectory_file": "runs/{name}-{seed:04}.tspi" },
+  "entities": [
+    {
+      "id": "ship-01",
+      "team": "blue",
+      "type": "ship",
+      "model": "generic-ship",
+      "initial": {
+        "pos_ned_m": [0, 0, 0],
+        "vel_ned_mps": [8, 0, 0]
+      },
+      "maneuvers": [
+        { "at_s": 20.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 40, "g_limit": 0.2 } }
+      ],
+      "munitions": [
+        {
+          "id": "ship-01-sam-1",
+          "model": "generic-sam",
+          "target": "red-01",
+          "launch": { "when": "range_to_target", "less_than_m": 30000, "eject_mps": 35, "elevation_deg": 70 },
+          "guidance": { "kind": "pronav", "gain": 3.5 }
+        }
+      ]
+    },
+    {
+      "id": "red-01",
+      "team": "red",
+      "type": "aircraft",
+      "model": "generic-fighter",
+      "initial": {
+        "pos_ned_m": [35000, 4000, -6000],
+        "vel_ned_mps": [-250, 0, 0]
+      },
+      "dispersions": {
+        "pos_ned_sigma_m": [900, 900, 200],
+        "vel_ned_sigma_mps": [15, 15, 3]
+      },
+      "maneuvers": [
+        {
+          "at_s": 12.0,
+          "lateral": { "kind": "turn_to_heading", "heading_deg": 205, "g_limit": 5 },
+          "vertical": { "kind": "delta_alt", "delta_m": -2000, "rate_mps": 40 }
+        }
+      ]
+    }
+  ]
+}

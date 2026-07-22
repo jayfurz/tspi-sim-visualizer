@@ -151,8 +151,8 @@ public static class ManifestValidator
             string where = $"entity '{e.Id}'";
             if (string.IsNullOrEmpty(e.Id)) Err("every entity needs a non-empty id");
             else if (!ids.Add(e.Id)) Err($"duplicate id '{e.Id}'");
-            if (e.Type != "aircraft")
-                Err($"{where}: only type 'aircraft' is supported at top level in v1 (got '{e.Type}')");
+            if (e.Type is not ("aircraft" or "ship"))
+                Err($"{where}: platform type must be 'aircraft' or 'ship' (got '{e.Type}')");
             if (e.Initial.PosNedM.Length != 3) Err($"{where}: initial.pos_ned_m must have 3 components");
             if (e.Initial.VelNedMps.Length != 3) Err($"{where}: initial.vel_ned_mps must have 3 components");
             if (e.Initial.AttYprDeg is { Length: not 3 }) Err($"{where}: initial.att_ypr_deg must have 3 components");
@@ -167,8 +167,8 @@ public static class ManifestValidator
 
             if (!models.TryResolve(e.Model, out var model, out _, out string mErr))
                 Err($"{where}: model '{e.Model}': {mErr}");
-            else if (model!.Kind != "aircraft")
-                Err($"{where}: model '{e.Model}' has kind '{model.Kind}', expected 'aircraft'");
+            else if (model!.Kind != e.Type)
+                Err($"{where}: model '{e.Model}' has kind '{model.Kind}', expected '{e.Type}'");
 
             foreach (var seg in e.Maneuvers)
             {
@@ -212,6 +212,14 @@ public static class ManifestValidator
                          $"max_flight_time_s={mm.MaxFlightTimeS}s exceeds scene.duration_s={s.DurationS}s");
                 if (mun.Launch is LaunchAtRange lr && lr.LessThanM <= 0)
                     Err($"{mwhere}: launch less_than_m must be > 0");
+                if (mun.Launch is { } lk)
+                {
+                    if (lk.EjectMps < 0) Err($"{mwhere}: launch eject_mps must be >= 0");
+                    if (lk.ElevationDeg is < -90 or > 90)
+                        Err($"{mwhere}: launch elevation_deg must be within [-90, 90]");
+                    if (lk.ElevationDeg != 0 && lk.EjectMps == 0)
+                        Warn($"{mwhere}: launch elevation_deg has no effect without eject_mps");
+                }
                 if (mun.Guidance is { } gd)
                 {
                     if (gd.Kind != "pronav" && gd.Kind != "ballistic" && gd.Kind != "nn")
@@ -424,20 +432,33 @@ internal sealed class LaunchSpecConverter : UnionConverter<LaunchSpec>
         switch (kind)
         {
             case "time":
-                RejectUnknown(obj, "at_s");
-                return new LaunchAtTime { AtS = GetDouble(obj, "at_s") };
+                RejectUnknown(obj, "at_s", "eject_mps", "elevation_deg");
+                return WithKick(obj, new LaunchAtTime { AtS = GetDouble(obj, "at_s") });
             case "range_to_target":
-                RejectUnknown(obj, "less_than_m");
-                return new LaunchAtRange { LessThanM = GetDouble(obj, "less_than_m") };
+                RejectUnknown(obj, "less_than_m", "eject_mps", "elevation_deg");
+                return WithKick(obj, new LaunchAtRange { LessThanM = GetDouble(obj, "less_than_m") });
             default:
                 throw new JsonException($"unknown launch condition '{kind}' (time | range_to_target)");
         }
     }
 
-    protected override (string, Dictionary<string, object?>) ToFields(LaunchSpec value) => value switch
+    private static LaunchSpec WithKick(JsonElement obj, LaunchSpec spec)
     {
-        LaunchAtTime t => ("time", new Dictionary<string, object?> { { "at_s", t.AtS } }),
-        LaunchAtRange r => ("range_to_target", new Dictionary<string, object?> { { "less_than_m", r.LessThanM } }),
-        _ => throw new JsonException("unknown LaunchSpec"),
-    };
+        spec.EjectMps = GetDouble(obj, "eject_mps", 0.0);
+        spec.ElevationDeg = GetDouble(obj, "elevation_deg", 0.0);
+        return spec;
+    }
+
+    protected override (string, Dictionary<string, object?>) ToFields(LaunchSpec value)
+    {
+        (string kind, Dictionary<string, object?> fields) = value switch
+        {
+            LaunchAtTime t => ("time", new Dictionary<string, object?> { { "at_s", t.AtS } }),
+            LaunchAtRange r => ("range_to_target", new Dictionary<string, object?> { { "less_than_m", r.LessThanM } }),
+            _ => throw new JsonException("unknown LaunchSpec"),
+        };
+        if (value.EjectMps != 0) fields["eject_mps"] = value.EjectMps;
+        if (value.ElevationDeg != 0) fields["elevation_deg"] = value.ElevationDeg;
+        return (kind, fields);
+    }
 }

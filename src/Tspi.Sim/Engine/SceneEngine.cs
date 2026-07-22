@@ -369,6 +369,22 @@ public static class SceneEngine
         }
     }
 
+    /// <summary>Birth-velocity kick: elevation above horizontal, azimuth along the
+    /// launch->target bearing (parent heading, then north, when degenerate).</summary>
+    private static Vec3d EjectKick(LaunchSpec kick, Vec3d fromPos, Vec3d fromVel, Vec3d targetPos)
+    {
+        Vec3d toTarget = targetPos - fromPos;
+        var bearing = new Vec3d(toTarget.X, toTarget.Y, 0);
+        if (bearing.Length < 1e-6) bearing = new Vec3d(fromVel.X, fromVel.Y, 0);
+        if (bearing.Length < 1e-6) bearing = new Vec3d(1, 0, 0);
+        bearing /= bearing.Length;
+        double el = kick.ElevationDeg * System.Math.PI / 180.0;
+        return new Vec3d(
+            System.Math.Cos(el) * bearing.X,
+            System.Math.Cos(el) * bearing.Y,
+            -System.Math.Sin(el)) * kick.EjectMps;
+    }
+
     private static (Trajectory, List<TspiEventEntry>) IntegrateMunition(
         MunitionSpec mun, VehicleModel model, ModelLibrary models, Environment env, ulong seed, double dt,
         double launchSec, ITargetTrack parentTrack, ITargetTrack targetTrack, uint ord, uint targetOrd,
@@ -377,6 +393,10 @@ public static class SceneEngine
         var events = new List<TspiEventEntry>();
         var start = parentTrack.SampleAt(launchSec);
         var state = new MotionState { Pos = start.Pos, Vel = start.Vel };
+        // Optional separation/booster kick (VLS/rail model) — guarded so legacy
+        // manifests (eject_mps absent/0) integrate byte-identically.
+        if (mun.Launch is { EjectMps: > 0 } kick)
+            state.Vel += EjectKick(kick, start.Pos, start.Vel, targetTrack.SampleAt(launchSec).Pos);
         var dyn = new MunitionDynamics(model, BuildGuidanceLaw(mun.Guidance, model, models), launchSec);
         var windSampler = env.CreateSampler(new RngStream(seed, "wind:" + mun.Id));
 

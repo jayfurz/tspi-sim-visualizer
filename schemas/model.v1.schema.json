@@ -8,7 +8,7 @@
   "required": ["schema", "kind", "mass_kg"],
   "properties": {
     "schema": { "const": "tspi-model/1" },
-    "kind": { "enum": ["aircraft", "munition"] },
+    "kind": { "enum": ["aircraft", "ship", "munition"] },
     "mass_kg": { "type": "number", "exclusiveMinimum": 0 },
     "g_limit_max": { "type": "number", "exclusiveMinimum": 0, "default": 9.0 },
     "accel_long_max_mps2": { "type": "number", "exclusiveMinimum": 0, "default": 6.0 },

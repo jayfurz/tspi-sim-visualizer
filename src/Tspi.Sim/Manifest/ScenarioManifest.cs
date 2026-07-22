@@ -151,7 +151,16 @@ public sealed class MunitionSpec
     public GuidanceSpec? Guidance { get; set; }
 }
 
-public abstract class LaunchSpec { }
+public abstract class LaunchSpec
+{
+    /// <summary>Separation/booster kick added to the inherited parent velocity at birth,
+    /// m/s (VLS/rail model — lets surface launchers loft; 0 = legacy inherit-only).</summary>
+    public double EjectMps { get; set; }
+
+    /// <summary>Kick elevation above horizontal, degrees; kick azimuth is the
+    /// launch->target bearing (falling back to the parent heading, then north).</summary>
+    public double ElevationDeg { get; set; }
+}
 public sealed class LaunchAtTime : LaunchSpec
 {
     public double AtS { get; set; }

@@ -96,7 +96,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "team": { "type": "string", "default": "gray", "examples": ["blue", "red", "white", "gray"] },
-        "type": { "const": "aircraft", "default": "aircraft" },
+        "type": { "enum": ["aircraft", "ship"], "default": "aircraft" },
         "model": { "type": "string", "minLength": 1, "description": "Resolved as <model>.json from the model search dirs" },
         "initial": {
           "type": "object",
@@ -180,17 +180,29 @@
         }
       ]
     },
+    "launch_kick": {
+      "eject_mps": { "type": "number", "minimum": 0, "default": 0, "description": "Separation/booster kick added to the inherited parent velocity at birth (VLS/rail model — lets surface launchers loft)" },
+      "elevation_deg": { "type": "number", "minimum": -90, "maximum": 90, "default": 0, "description": "Kick elevation above horizontal; kick azimuth is the launch->target bearing" }
+    },
     "launch": {
       "oneOf": [
         {
           "type": "object", "additionalProperties": false,
           "required": ["when", "at_s"],
-          "properties": { "when": { "const": "time" }, "at_s": { "type": "number", "minimum": 0 } }
+          "properties": {
+            "when": { "const": "time" }, "at_s": { "type": "number", "minimum": 0 },
+            "eject_mps": { "$ref": "#/$defs/launch_kick/eject_mps" },
+            "elevation_deg": { "$ref": "#/$defs/launch_kick/elevation_deg" }
+          }
         },
         {
           "type": "object", "additionalProperties": false,
           "required": ["when", "less_than_m"],
-          "properties": { "when": { "const": "range_to_target" }, "less_than_m": { "type": "number", "exclusiveMinimum": 0 } }
+          "properties": {
+            "when": { "const": "range_to_target" }, "less_than_m": { "type": "number", "exclusiveMinimum": 0 },
+            "eject_mps": { "$ref": "#/$defs/launch_kick/eject_mps" },
+            "elevation_deg": { "$ref": "#/$defs/launch_kick/elevation_deg" }
+          }
         }
       ]
     },

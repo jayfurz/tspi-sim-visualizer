@@ -16,6 +16,8 @@ alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net8.0/tspi.dll"
 
 tspi validate schemas/examples/intercept.json
 tspi run schemas/examples/intercept.json             # -> schemas/examples/runs/intercept-0042.tspi
+tspi run schemas/examples/ship-to-air.json           # ship-to-air reference engagement: VLS-style
+                                                     # launch kick, SAM vs dispersed inbound
 tspi run schemas/examples/nn-intercept.json          # learned (NN) guidance: hand-rolled f64 MLP,
                                                      # weights sha-256'd into provenance
 tspi inspect schemas/examples/runs/intercept-0042.tspi --events --provenance

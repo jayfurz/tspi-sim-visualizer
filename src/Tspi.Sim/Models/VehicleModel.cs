@@ -137,8 +137,8 @@ public sealed class ModelLibrary
                         ?? throw new InvalidDataException("model file is JSON null");
                 if (m.Schema != VehicleModel.SchemaId)
                     throw new InvalidDataException($"schema must be '{VehicleModel.SchemaId}' (got '{m.Schema}')");
-                if (m.Kind != "aircraft" && m.Kind != "munition")
-                    throw new InvalidDataException($"kind must be 'aircraft' or 'munition' (got '{m.Kind}')");
+                if (m.Kind is not ("aircraft" or "ship" or "munition"))
+                    throw new InvalidDataException($"kind must be 'aircraft', 'ship', or 'munition' (got '{m.Kind}')");
                 if (m.MassKg <= 0)
                     throw new InvalidDataException("mass_kg must be > 0");
                 ValidateRotational(m);

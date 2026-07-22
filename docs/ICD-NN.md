@@ -9,7 +9,7 @@ open items SME review should resolve.
 |---|---|
 | Parties | **Sim package** (this repo: engine, CLI, readers) / **Model package** (NN team: training code, delivered weights) |
 | Authority | This document + the referenced schemas. Code and doc must not disagree; a disagreement is a defect. |
-| Revision | 1 — 2026-07-16, initial issue for SME review |
+| Revision | 2 — 2026-07-22: DCV fly-out view (§3.4, OPEN-12/13), ship-to-air reference engagement. 1 — 2026-07-16, initial issue for SME review |
 
 ## 1. Applicable documents
 
@@ -37,6 +37,11 @@ One record per **launch event**. The record is a *view* rebuilt from `.tspi` run
 on load (`tspi_py.engagements(paths)`); it is serialized to a file only as a shipment
 to a consumer without repo/run access, and then as **one file per batch**, never per
 engagement or per run.
+
+The **reference engagement is ship-to-air** — a surface vessel launching against an
+air target (`schemas/examples/ship-to-air.json`: `generic-ship` + `generic-sam`
+notional models, VLS-style launch kick). Nothing in these shapes is platform-specific;
+air-launched engagements remain equally valid records.
 
 ### 3.1 Record layout
 
@@ -130,7 +135,7 @@ flyouts(k)
 ├─ .frame                         % the DCV frame, fixed at the launch instant
 │    .origin_ned_m      [1×3]     % launch point (all DCV positions are relative to it)
 │    .dcv_from_ned      [3×3]     % rows = D/C/V unit vectors; p_dcv = R*(p_ned - origin)
-│    .downrange_ref               % 'target' (normal) | 'launch_velocity' (target overhead)
+│    .downrange_ref               % bearing source: 'target' | 'launch_velocity' | 'target_velocity'
 ├─ .munition                      % the fly-out itself — only this view carries it
 │    .t_s               [1×N]     % sample times, fixed dt (.dt_s, .t0_s also present)
 │    .pos_dcv_m         [N×3]     % columns: downrange, crossrange, vertical (up), meters
@@ -155,9 +160,11 @@ xlabel('downrange m'); ylabel('vertical m');
 #### The frame, in words
 
 Origin at the munition's launch point. **Downrange** points along the horizontal
-line from launch toward where the target was at launch (if the target is directly
-overhead, the launch velocity heading is used instead — `frame.downrange_ref` says
-which). **Crossrange** is positive to the right of that line, seen from above.
+line from launch toward where the target was at launch. If the target is directly
+overhead the launch-velocity heading is used; if that is vertical too (a
+vertically-launched SAM under an overhead target), the target's horizontal velocity
+direction — `frame.downrange_ref` says which won. **Crossrange** is positive to the
+right of that line, seen from above.
 **Vertical** is height above the launch point, positive up. It is a plotting/feature
 frame, not a dynamics frame (as a triad it is left-handed); recover scene NED any
 time via `p_ned = origin_ned_m + dcv_from_ned' * p_dcv`.
@@ -276,8 +283,8 @@ sim — no ML runtime dependency; the identical forward pass is ~10 lines in any
 | # | Item | Current state | Question for SMEs |
 |---|---|---|---|
 | OPEN-1 | MATLAB reader (`tspi_engagements.m`) | planned, py/JS exist | needed before first delivery? |
-| OPEN-2 | Dispersion spec for training sweeps | schema supports; example scenario has none | what IC spread & seed counts constitute an adequate training set? |
-| OPEN-3 | Launcher trajectory in IF-1 | only launcher **id** + munition launch state | does the model condition on launcher motion pre-launch? |
+| OPEN-2 | Dispersion spec for training sweeps | schema supports; the ship-to-air reference scenario disperses the target's ICs | what IC spread & seed counts constitute an adequate training set? |
+| OPEN-3 | Launcher trajectory in IF-1 | only launcher **id** + munition launch state (reference launcher is now a surface vessel — low dynamics) | does the model condition on launcher motion pre-launch? |
 | OPEN-4 | Environment exposure | wind/atmosphere affect truth but are absent from IF-1/IF-2 | should engagement records carry the run's environment block? should obs? |
 | OPEN-5 | Sensor/seeker realism | `los_v1` is computed from **truth** states — no noise, latency, FOV, or track loss | acceptable for this phase, or is a measurement-model contract (`los_v2`+noise spec) required now? |
 | OPEN-6 | Obs sufficiency | 4 scalars, stateless | target-maneuver history, time-to-go, off-boresight — needed? (any addition = new `obs` id) |

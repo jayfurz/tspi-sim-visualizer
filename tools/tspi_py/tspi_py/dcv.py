@@ -6,9 +6,11 @@ own track (which no other view carries). Like the engagement view this is a
 
 Frame (per launch): origin at the munition's launch position; axes
     D  downrange   horizontal unit vector from launch toward the target's
-                   position at launch (falls back to the horizontal launch
-                   velocity when the target is directly overhead — see
-                   frame.downrange_ref)
+                   position at launch; degenerate-bearing fallback chain
+                   (frame.downrange_ref records which won): launch->target
+                   bearing, else launch-velocity heading, else the target's
+                   horizontal velocity direction (vertical ship launch with
+                   the target directly overhead)
     C  crossrange  positive to the right of the shot line viewed from above
     V  vertical    positive up (height above the launch point)
 
@@ -56,10 +58,11 @@ class DcvFlyout:
     schema = "tspi-dcv/1"
 
 
-def _dcv_basis(launch_pos_ned, target_pos_ned, launch_vel_ned):
+def _dcv_basis(launch_pos_ned, target_pos_ned, launch_vel_ned, target_vel_ned):
     """NED->DCV row matrix [D̂; Ĉ; V̂] and which reference fixed the bearing."""
     for ref, vec in (("target", target_pos_ned - launch_pos_ned),
-                     ("launch_velocity", launch_vel_ned)):
+                     ("launch_velocity", launch_vel_ned),
+                     ("target_velocity", target_vel_ned)):
         h = math.hypot(float(vec[0]), float(vec[1]))
         if h > _HORIZONTAL_EPS_M:
             dn, de = float(vec[0]) / h, float(vec[1]) / h
@@ -67,7 +70,8 @@ def _dcv_basis(launch_pos_ned, target_pos_ned, launch_vel_ned):
                              [-de, dn, 0.0],
                              [0.0, 0.0, -1.0]]), ref
     raise ValueError(
-        "degenerate DCV frame: launch->target line and launch velocity are both vertical")
+        "degenerate DCV frame: launch->target line, launch velocity, and target "
+        "velocity are all vertical")
 
 
 def dcv_flyouts(paths, window_s: float | None = 100.0) -> list[DcvFlyout]:
@@ -82,7 +86,8 @@ def dcv_flyouts(paths, window_s: float | None = 100.0) -> list[DcvFlyout]:
     for e in engagements(paths, window_s):
         f = files.setdefault(e.meta.source, TspiFile(e.meta.source))
         origin = e.launch.pos_ned_m
-        rot, ref = _dcv_basis(origin, e.launch.target_pos_ned_m, e.launch.vel_ned_mps)
+        rot, ref = _dcv_basis(origin, e.launch.target_pos_ned_m,
+                              e.launch.vel_ned_mps, e.launch.target_vel_ned_mps)
 
         def track(pos_ned, vel_ned, att, omega, t_s, t0_s, dt_s):
             return SimpleNamespace(

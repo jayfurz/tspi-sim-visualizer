@@ -88,6 +88,26 @@ def test_round_trip_to_ned(f, fly):
         np.linalg.norm(dart["vel"].astype(np.float64), axis=1), atol=1e-6)
 
 
+def test_dcv_basis_fallback_chain():
+    from tspi_py.dcv import _dcv_basis
+
+    lp = np.array([0.0, 0.0, -10.0])
+    overhead = lp + np.array([0.0, 0.0, -5000.0])
+    vertical = np.array([0.0, 0.0, -80.0])
+    # Target overhead + vertical launch (ship VLS): the target's horizontal
+    # velocity direction fixes the bearing.
+    rot, ref = _dcv_basis(lp, overhead, vertical, np.array([0.0, -200.0, 0.0]))
+    assert ref == "target_velocity"
+    np.testing.assert_allclose(rot[0], [0.0, -1.0, 0.0], atol=1e-12)
+    # Normal geometry is untouched.
+    _, ref2 = _dcv_basis(lp, lp + np.array([1000.0, 0.0, -2000.0]),
+                         vertical, np.array([-200.0, 0.0, 0.0]))
+    assert ref2 == "target"
+    # All three references vertical: no bearing exists.
+    with pytest.raises(ValueError, match="degenerate"):
+        _dcv_basis(lp, overhead, vertical, np.array([0.0, 0.0, -1.0]))
+
+
 def test_save_mat_round_trips(f, fly, tmp_path):
     scipy_io = pytest.importorskip("scipy.io")
     from tspi_py.dcv import save_mat
