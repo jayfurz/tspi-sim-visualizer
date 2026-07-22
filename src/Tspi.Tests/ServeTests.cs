@@ -95,7 +95,12 @@ public class ServeTests : IClassFixture<ServeFixture>
             "/files/tools/tspi_py/tests/data/golden-v1.tspi");
         Assert.Equal("TSPI", Encoding.ASCII.GetString(bytes, 0, 4));
 
-        // Only .tspi is exposed — an existing README must 404, as must escapes
+        // Scenarios (.json) are exposed read-only too — the editor's ?scenario= source.
+        var scen = await _f.Client.GetAsync("/files/schemas/examples/golden.json");
+        Assert.Equal(HttpStatusCode.OK, scen.StatusCode);
+        Assert.StartsWith("application/json", scen.Content.Headers.ContentType!.ToString());
+
+        // Only .tspi/.json are exposed — an existing README must 404, as must escapes
         // from the root and POSTs to /files/.
         Assert.Equal(HttpStatusCode.NotFound,
             (await _f.Client.GetAsync("/files/README.md")).StatusCode);

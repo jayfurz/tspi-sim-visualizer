@@ -361,7 +361,8 @@
   window.addEventListener('pointerup', function () { scrubbing = false; });
 
   window.addEventListener('keydown', function (ev) {
-    if (!scene || ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+    if (!scene || ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT'
+      || ev.target.tagName === 'TEXTAREA') return;
     var stepS = ev.shiftKey ? 10 : 1;
     if (ev.code === 'Space') { setPlaying(!playing); ev.preventDefault(); }
     else if (ev.code === 'ArrowLeft') seek(timeSec - stepS);
@@ -517,9 +518,94 @@
   }
   requestAnimationFrame(frame);
 
-  // Deep links (and the future `tspi serve` integration): ?file=<url> fetches a
-  // served .tspi; &t=<sec> opens paused at that time instead of autoplaying.
-  // Needs http(s) — fetch is unavailable from file://, where drag-drop still works.
+  // ---------- served-mode scenario editor (tspi serve backend) ----------
+  // The page stays a pure UI shell: the textarea holds the manifest JSON, the CLI
+  // behind /api/run does all simulation, and the returned .tspi is reloaded at the
+  // current playback time — determinism makes the resume seamless (Unity's
+  // ScenarioEditController loop, browser-grade).
+  var editorEl = document.getElementById('editor');
+  var manifestTa = document.getElementById('manifestTa');
+  var editStatus = document.getElementById('editStatus');
+
+  function editorOpen(show) {
+    editorEl.classList.toggle('hidden', !show);
+    // The events panel shares the right edge; yield it to the editor.
+    document.getElementById('eventsPanel').classList.toggle('hidden',
+      show || !scene || scene.file.events.length === 0);
+  }
+
+  function setStatus(lines, cls) {
+    editStatus.innerHTML = '';
+    editStatus.className = cls || '';
+    lines.forEach(function (l) {
+      var d = document.createElement('div');
+      d.textContent = l;
+      editStatus.appendChild(d);
+    });
+  }
+
+  function apiPost(url, body) {
+    return fetch(url, { method: 'POST', body: body }).then(function (r) {
+      return r.text().then(function (text) {
+        var data;
+        try { data = JSON.parse(text); }
+        catch (e) { throw new Error('HTTP ' + r.status + ': ' + text.slice(0, 200)); }
+        return { status: r.status, data: data };
+      });
+    });
+  }
+
+  function problemLines(d) {
+    return (d.errors || [d.error || 'request failed']).map(function (e) { return 'error: ' + e; })
+      .concat((d.warnings || []).map(function (w) { return 'warning: ' + w; }));
+  }
+
+  document.getElementById('validateBtn').addEventListener('click', function () {
+    apiPost('/api/validate', manifestTa.value).then(function (res) {
+      if (res.status !== 200 || !res.data.valid) { setStatus(problemLines(res.data), 'bad'); return; }
+      var lines = ['valid ✓'].concat(res.data.warnings.map(function (w) { return 'warning: ' + w; }));
+      setStatus(lines, 'ok');
+    }).catch(function (e) { setStatus([String(e.message || e)], 'bad'); });
+  });
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var url = '/api/run';
+    var seed = document.getElementById('seedInput').value.trim();
+    if (seed) url += '?seed=' + encodeURIComponent(seed);
+    setStatus(['running…']);
+    apiPost(url, manifestTa.value).then(function (res) {
+      var d = res.data;
+      if (res.status !== 200) { setStatus(problemLines(d), 'bad'); return; }
+      setStatus(['ran seed ' + d.seed + ' — ' + d.samples + ' samples, ' +
+        d.elapsed_ms.toFixed(0) + ' ms'].concat(d.events.map(function (ev) {
+          return 't=' + ev.t_s.toFixed(2) + 's ' + ev.kind +
+            (ev.src ? ' ' + ev.src : '') + (ev.dst ? ' → ' + ev.dst : '') +
+            (ev.miss_m != null ? ' (miss ' + ev.miss_m.toFixed(1) + ' m)' : '');
+        })), 'ok');
+      var resumeAt = document.getElementById('resumeChk').checked && scene ? timeSec : undefined;
+      return fetch(d.file).then(function (r) {
+        if (!r.ok) throw new Error('fetch ' + d.file + ': HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(function (buf) {
+        loadBuffer(buf, d.file.split('/').pop(), resumeAt);
+        editorOpen(true); // loadBuffer unhides the events panel; re-yield it
+      });
+    }).catch(function (e) { setStatus([String(e.message || e)], 'bad'); });
+  });
+
+  document.getElementById('editBtn').addEventListener('click', function () {
+    editorOpen(editorEl.classList.contains('hidden'));
+  });
+  document.getElementById('editorCloseBtn').addEventListener('click', function () { editorOpen(false); });
+  document.getElementById('editOpenLink').addEventListener('click', function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation(); // the drop screen underneath opens the file picker on click
+    editorOpen(true);
+  });
+
+  // Deep links: ?file=<url> fetches a served .tspi (&t=<sec> opens paused there);
+  // ?scenario=<url> preloads the editor. Needs http(s) — fetch is unavailable from
+  // file://, where drag-drop still works.
   (function () {
     var params = new URLSearchParams(window.location.search);
     var url = params.get('file');
@@ -532,5 +618,29 @@
       })
       .then(function (buf) { loadBuffer(buf, url.split('/').pop(), t); })
       .catch(function (e) { showError(String(e.message || e)); });
+  })();
+
+  // Served mode: /api/version answering marks the edit-loop backend as present.
+  (function () {
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+    fetch('/api/version')
+      .then(function (r) { if (!r.ok) throw new Error('no api'); return r.json(); })
+      .then(function () {
+        document.getElementById('editBtn').classList.remove('hidden');
+        document.getElementById('serveHint').classList.remove('hidden');
+        var url = new URLSearchParams(window.location.search).get('scenario');
+        if (!url) return;
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('fetch ' + url + ': HTTP ' + r.status);
+          return r.text();
+        }).then(function (text) {
+          manifestTa.value = text;
+          editorOpen(true);
+        });
+      })
+      .catch(function (e) {
+        // Not served (plain static hosting): the editor simply stays hidden.
+        if (e && e.message && e.message !== 'no api') showError(String(e.message));
+      });
   })();
 })();

@@ -19,15 +19,16 @@ namespace Tspi.Cli.Commands;
 /// counterpart of Unity's ScenarioEditController, which shells out to this CLI).
 ///
 ///   GET  /, /index.html, /app.js, /tspi.js   the viewer (whitelisted files only)
-///   GET  /files/&lt;path&gt;.tspi                  read-only .tspi under --root
+///   GET  /files/&lt;path&gt;.tspi|.json            read-only runs + scenarios under --root
 ///   POST /api/validate                        manifest JSON -> {valid, errors, warnings}
 ///   POST /api/run[?seed=N]                    manifest JSON -> run to --out-dir,
 ///                                             {file, viewer, events, ...}
 ///   GET  /api/version
 ///
-/// The loop: POST an edited manifest to /api/run, open the returned
-/// `viewer` URL (`/?file=...&amp;t=&lt;sec&gt;` deep link) — determinism makes the
-/// re-run resume seamless. Binds 127.0.0.1 by default; pass --bind to expose.
+/// The loop: the served page's editor panel (`/?scenario=/files/....json` deep link)
+/// POSTs the edited manifest to /api/run and reloads the returned file at the same
+/// playback time — determinism makes the resume seamless. Binds 127.0.0.1 by
+/// default; pass --bind to expose.
 /// </summary>
 public static class ServeCommand
 {
@@ -54,17 +55,20 @@ public static class ServeCommand
 
         Console.WriteLine($"tspi serve — {server.BaseUrl}");
         Console.WriteLine($"  viewer:  {viewer}");
-        Console.WriteLine($"  files:   /files/** -> {root} (*.tspi, read-only)");
+        Console.WriteLine($"  files:   /files/** -> {root} (*.tspi runs, *.json scenarios, read-only)");
         Console.WriteLine($"  api:     POST /api/validate, POST /api/run (runs -> {outDir})");
         if (p.PositionalCount > 0)
         {
-            string open = Path.GetFullPath(p.Positional(0, "file.tspi"));
+            string open = Path.GetFullPath(p.Positional(0, "file.tspi|scenario.json"));
             CliCommon.RequireFile(open, "file");
             string rel = Path.GetRelativePath(root, open);
             if (rel.StartsWith("..", StringComparison.Ordinal))
                 Console.WriteLine($"  warning: {open} is outside the serve root, not linkable");
             else
-                Console.WriteLine($"  open:    {server.BaseUrl}?file=/files/{rel.Replace('\\', '/')}");
+            {
+                string param = open.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "scenario" : "file";
+                Console.WriteLine($"  open:    {server.BaseUrl}?{param}=/files/{rel.Replace('\\', '/')}");
+            }
         }
         Console.WriteLine("Ctrl+C to stop.");
 
@@ -175,7 +179,7 @@ public sealed class TspiHttpServer : IDisposable
             if (req.HttpMethod == "GET" && StaticFiles.TryGetValue(name, out var file))
                 ServeStatic(res, file);
             else if (req.HttpMethod == "GET" && path.StartsWith("/files/", StringComparison.Ordinal))
-                ServeTspiFile(res, path["/files/".Length..]);
+                ServeRootFile(res, path["/files/".Length..]);
             else if (req.HttpMethod == "POST" && path == "/api/validate")
                 ApiValidate(req, res);
             else if (req.HttpMethod == "POST" && path == "/api/run")
@@ -199,18 +203,21 @@ public sealed class TspiHttpServer : IDisposable
         Write(res, 200, body);
     }
 
-    /// <summary>Read-only .tspi access under FilesRoot; anything else is 404.</summary>
-    private void ServeTspiFile(HttpListenerResponse res, string relEscaped)
+    /// <summary>Read-only .tspi (runs) / .json (scenarios) under FilesRoot; anything
+    /// else is 404 — the extension allowlist is the whole exposure.</summary>
+    private void ServeRootFile(HttpListenerResponse res, string relEscaped)
     {
         string rel = Uri.UnescapeDataString(relEscaped);
         string full = Path.GetFullPath(Path.Combine(_cfg.FilesRoot, rel));
+        bool isJson = full.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
         if (rel.Length == 0 || !PathIsUnder(full, _cfg.FilesRoot)
-            || !full.EndsWith(".tspi", StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+            || !(isJson || full.EndsWith(".tspi", StringComparison.OrdinalIgnoreCase))
+            || !File.Exists(full))
         {
-            Json(res, 404, new { error = "no such .tspi under the serve root" });
+            Json(res, 404, new { error = "no such .tspi/.json under the serve root" });
             return;
         }
-        res.ContentType = "application/octet-stream";
+        res.ContentType = isJson ? "application/json; charset=utf-8" : "application/octet-stream";
         Write(res, 200, File.ReadAllBytes(full));
     }
 

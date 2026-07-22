@@ -22,8 +22,11 @@ server — and drag a `.tspi` onto it. Nothing is uploaded; the file is read in-
 - **Panels**: file metadata (dt, origin LLA, `dynamics` honesty tag), entity list
   (click to follow; rows dim outside the entity's alive window), footer event log
   (click to seek).
+- **Scenario editor** (served mode only): when the page is hosted by `tspi serve`, an
+  `edit` panel appears — manifest JSON in a textarea, validate/run buttons, optional
+  seed override, and "resume at t": the new run reloads at the current playback time.
 - **Deep links** (http only): `index.html?file=<url>&t=<sec>` fetches a served file
-  and opens paused at `t` — the hook `tspi serve` uses (below).
+  and opens paused at `t`; `?scenario=<url>` preloads the editor with a manifest.
 
 Entities appear at their `t0` and vanish at their last sample, exactly as recorded —
 a munition doesn't exist before `launch` and disappears at `intercept`/`ground_impact`.
@@ -51,23 +54,25 @@ this page over http and adds the endpoints the Unity edit loop gets by shelling 
 the browser stays a pure UI shell, the CLI stays the only thing that simulates:
 
 ```sh
-tspi serve runs/intercept-0042.tspi        # serves the viewer, prints a deep-link URL
+tspi serve schemas/examples/intercept.json   # prints /?scenario=… — the editor deep link
 curl -X POST --data-binary @scenario.json localhost:8080/api/validate
 curl -X POST --data-binary @scenario.json localhost:8080/api/run?seed=7
 #   -> {file: "/files/runs/serve/…tspi", viewer: "/?file=…", events: […], …}
 ```
 
-`GET /files/<path>.tspi` serves any run under the serve root (`--root`, default cwd)
-read-only; everything else 404s. Runs land in `--out-dir` (default `runs/serve/`).
-POST an edited manifest to `/api/run`, open the returned `viewer` URL with `&t=<sec>`,
-and determinism gives the Unity-style resume: everything before the edit replays
-identically. Binds `127.0.0.1` only unless `--bind` says otherwise. Integration tests:
-`src/Tspi.Tests/ServeTests.cs`; exercised in `scripts/e2e.sh`.
+`GET /files/<path>` serves `.tspi` runs and `.json` scenarios under the serve root
+(`--root`, default cwd) read-only; everything else 404s. Runs land in `--out-dir`
+(default `runs/serve/`). The in-page editor (or a curl loop) POSTs the edited manifest
+to `/api/run` and reloads the result at the same playback time — determinism gives the
+Unity-style resume: everything before the edit replays identically. Binds `127.0.0.1`
+only unless `--bind` says otherwise. Integration tests: `src/Tspi.Tests/ServeTests.cs`;
+exercised in `scripts/e2e.sh`.
 
 ## Limits (deliberate, for now)
 
-- The edit UI itself isn't in the browser yet — `/api/run` + deep links make the loop
-  scriptable (curl, editor tooling); an in-page manifest panel is the next increment.
+- The editor is a JSON textarea, not drag-gizmos — Unity's `ScenarioEditController`
+  remains the graphical authoring surface; this loop is for quick parameter/seed
+  iteration anywhere a browser reaches the CLI.
 - No terrain/imagery. The georeference is in every file header (`origin_lla`); when
   terrain matters, CesiumJS (Apache-2.0, self-hostable) is the path that mirrors the
   Cesium-for-Unity plan in `unity/README.md`.

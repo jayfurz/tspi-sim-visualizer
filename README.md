@@ -72,8 +72,9 @@ disk: drag a `.tspi` on, get orbitable 3D trails, attitude-oriented markers, scr
 and the footer event log — parsed and rendered with hand-rolled JS/WebGL, zero
 dependencies, no build step. It exists for environments where Unity can't be approved or
 binaries can't be delivered: the whole viewer is auditable source. `tspi serve` hosts the
-same page over http with read-only `.tspi` access plus `POST /api/run` / `/api/validate`,
-making the browser an edit-loop client of the real CLI. See `web/README.md`.
+same page over http with read-only `.tspi`/`.json` access plus `POST /api/run` /
+`/api/validate`, and the page grows an in-page scenario editor with deterministic
+resume-at-t — the browser becomes an edit-loop client of the real CLI. See `web/README.md`.
 
 ## Godot viewer (open-source engine, GDScript-only)
 

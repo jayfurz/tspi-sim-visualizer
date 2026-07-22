@@ -57,6 +57,24 @@
   button:hover, select:hover { border-color: var(--accent); }
   label.chk { color: var(--dim); cursor: pointer; user-select: none; }
 
+  #editor { top: 62px; right: 10px; bottom: 60px; width: 460px;
+    max-width: calc(100vw - 250px); display: flex; flex-direction: column; gap: 7px; }
+  #editor .edhead { display: flex; gap: 10px; align-items: baseline; }
+  #editor .edhead h3 { font-size: 11px; text-transform: uppercase; color: var(--dim);
+    letter-spacing: 0.08em; }
+  #editor .edhead .sub { color: var(--dim); font-size: 11px; flex: 1; }
+  #manifestTa { flex: 1; resize: none; background: #0a0e14; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font: inherit;
+    white-space: pre; overflow: auto; }
+  #manifestTa:focus { outline: none; border-color: var(--accent); }
+  #editor .edrow { display: flex; gap: 8px; align-items: center; }
+  #seedInput { width: 80px; background: #1a2331; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font: inherit; }
+  #editStatus { max-height: 30%; overflow-y: auto; color: var(--dim); white-space: pre-wrap; }
+  #editStatus.ok div:first-child { color: #7fd18a; }
+  #editStatus.bad { color: #ffb0b8; }
+  #serveHint a { color: var(--accent); }
+
   #drop { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
     align-items: center; justify-content: center; color: var(--dim); cursor: pointer;
     background: radial-gradient(ellipse at center, rgba(77,154,255,0.06), transparent 65%); }
@@ -76,6 +94,7 @@
   <span class="title" id="fileName"></span>
   <span class="meta" id="fileMeta"></span>
   <button id="openBtn2" title="Open another file">open…</button>
+  <button id="editBtn" class="hidden" title="Scenario editor (tspi serve)">edit</button>
   <button id="fitBtn" title="Frame all trajectories (F)">fit</button>
 </div>
 
@@ -106,6 +125,29 @@
   <div>or click to browse &mdash; runs entirely in this page, nothing is uploaded</div>
   <div><kbd>space</kbd> play/pause &nbsp; <kbd>&larr;/&rarr;</kbd> &plusmn;1 s &nbsp;
     <kbd>shift</kbd>+<kbd>&larr;/&rarr;</kbd> &plusmn;10 s &nbsp; <kbd>F</kbd> fit view</div>
+  <div id="serveHint" class="hidden">served by <b>tspi serve</b> &mdash;
+    <a href="#" id="editOpenLink">open the scenario editor</a></div>
+</div>
+
+<!-- After #drop: the editor must paint (and take pointer events) above the
+     full-screen drop overlay when opened before any file is loaded. -->
+<div id="editor" class="panel hidden">
+  <div class="edhead">
+    <h3>scenario</h3>
+    <span class="sub">edit &rarr; run &rarr; resume at t &mdash; the CLI simulates, this page renders</span>
+    <button id="editorCloseBtn" title="Close editor">&times;</button>
+  </div>
+  <textarea id="manifestTa" spellcheck="false"
+    placeholder="paste a scenario.json, or open /?scenario=/files/<path>.json"></textarea>
+  <div class="edrow">
+    <button id="validateBtn" title="POST /api/validate">validate</button>
+    <button id="runBtn" title="POST /api/run">run</button>
+    <input id="seedInput" type="text" inputmode="numeric" placeholder="seed"
+      title="Optional seed override (?seed=N)">
+    <label class="chk" title="Reload the new run at the current playback time">
+      <input type="checkbox" id="resumeChk" checked> resume at t</label>
+  </div>
+  <div id="editStatus"></div>
 </div>
 <div id="err" class="hidden"></div>
 <input type="file" id="fileInput" accept=".tspi" class="hidden">
