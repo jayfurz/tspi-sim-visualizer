@@ -24,3 +24,6 @@ unity/TspiViewer/UserSettings/
 unity/TspiViewer/obj/
 unity/TspiViewer/*.csproj
 unity/TspiViewer/*.sln
+
+# Rendered doc PDFs are regenerable artifacts (scripts/md2pdf.py)
+docs/*.pdf

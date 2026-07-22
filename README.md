@@ -89,7 +89,8 @@ the Python and JS readers. See `godot/README.md`.
   append & recovery, layout-evolution rules)
 - `docs/CONVENTIONS.md` — frames, quaternion, time, units, determinism (read first)
 - `docs/ICD-NN.md` — interface control document for the NN guidance package
-  (training-data record, runtime obs contract, policy delivery format, open items)
+  (training-data record, runtime obs contract, policy delivery format, open items);
+  render the SME review PDF with `python scripts/md2pdf.py` (PyMuPDF; output git-ignored)
 - `docs/ARCHITECTURE.md` — component map, fidelity level, scaling numbers
 - `schemas/` — JSON Schemas for manifests/models + validated examples
 
