@@ -10,9 +10,9 @@ appends, byte-identical reruns.
 ## Quickstart
 
 ```bash
-# .NET 10 SDK required (https://dot.net). Unity 6000.0.x for the viewer (optional).
+# .NET 8 SDK required (https://dot.net). Unity 6000.0.x for the viewer (optional).
 cd src && dotnet test && cd ..                       # 96 tests: format, recovery, V&V, import, guidance, serve, golden lock
-alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
+alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Debug/net8.0/tspi.dll"
 
 tspi validate schemas/examples/intercept.json
 tspi run schemas/examples/intercept.json             # -> schemas/examples/runs/intercept-0042.tspi

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-TSPI="dotnet src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll"
+TSPI="dotnet src/artifacts/bin/Tspi.Cli/Debug/net8.0/tspi.dll"
 PYTHON="${PYTHON:-python3}"   # point at a venv python that has tspi-py + jsonschema installed
 WORK=$(mktemp -d /tmp/tspi-e2e.XXXXXX)
 trap 'jobs -p | xargs -r kill 2> /dev/null; rm -rf "$WORK"' EXIT
@@ -11,7 +11,7 @@ trap 'jobs -p | xargs -r kill 2> /dev/null; rm -rf "$WORK"' EXIT
 step() { printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
 
 step "build + unit/V&V/golden tests"
-(cd src && dotnet build Tspi.slnx -v q && dotnet test Tspi.Tests/Tspi.Tests.csproj -v q --nologo)
+(cd src && dotnet build Tspi.sln -v q && dotnet test Tspi.Tests/Tspi.Tests.csproj -v q --nologo)
 
 step "validate manifests"
 $TSPI validate schemas/examples/minimal.json

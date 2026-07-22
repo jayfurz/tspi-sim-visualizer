@@ -13,24 +13,24 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "8.0.x"
 
       - name: Build (Release)
-        run: dotnet build src/Tspi.slnx -c Release
+        run: dotnet build src/Tspi.sln -c Release
 
       - name: Unit + V&V + golden-lock tests
         run: dotnet test src/Tspi.Tests/Tspi.Tests.csproj -c Release
 
       - name: Determinism gate (run twice, byte-compare)
         run: |
-          TSPI="dotnet src/artifacts/bin/Tspi.Cli/Release/net10.0/tspi.dll"
+          TSPI="dotnet src/artifacts/bin/Tspi.Cli/Release/net8.0/tspi.dll"
           $TSPI run schemas/examples/intercept.json -o /tmp/a.tspi --quiet
           $TSPI run schemas/examples/intercept.json -o /tmp/b.tspi --quiet
           $TSPI diff /tmp/a.tspi /tmp/b.tspi
 
       - name: Append + recovery path
         run: |
-          TSPI="dotnet src/artifacts/bin/Tspi.Cli/Release/net10.0/tspi.dll"
+          TSPI="dotnet src/artifacts/bin/Tspi.Cli/Release/net8.0/tspi.dll"
           $TSPI append /tmp/a.tspi schemas/examples/addendum-late-munition.json
           $TSPI inspect /tmp/a.tspi --chain
           python3 -c "import os; p='/tmp/a.tspi'; os.truncate(p, os.path.getsize(p)-17)"

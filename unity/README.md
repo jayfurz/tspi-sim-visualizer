@@ -25,7 +25,7 @@ Add **ScenarioEditController** to the same GameObject and set:
 - `scenarioPath` — a scenario manifest (absolute, or relative to the Unity project
   root), e.g. `../../schemas/examples/intercept.json`. **Saved in place on regenerate.**
 - `tspiExecutable` / `tspiDllPath` — a self-contained `tspi` binary, or `dotnet` plus
-  the absolute path to `src/artifacts/bin/Tspi.Cli/Debug/net10.0/tspi.dll`.
+  the absolute path to `src/artifacts/bin/Tspi.Cli/Debug/net8.0/tspi.dll`.
 - `workingDirectory` — the repo root, so `./models` resolves (or set `modelsDir`).
 
 Controls: **Tab** toggles edit mode. In edit mode, click an entity marker to select,
