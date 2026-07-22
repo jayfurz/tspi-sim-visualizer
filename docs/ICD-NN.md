@@ -186,8 +186,11 @@ New trajectories enter as engagements, and the view picks them up automatically:
   `tspi import data.csv` promotes them to a first-class run; munitions can then be
   appended against them and every engagement views in DCV like any other.
 
-There is no hand-editing of a DCV struct back into a run — the run files stay the
-single source of truth, and DCV is always derived from them.
+Each engagement gets its **own** DCV frame (origin at its launch point), so appended
+fly-outs are always DCV-viewable with no extra work. There is no hand-editing of a
+DCV struct back into a run — the run files stay the single source of truth, and DCV
+is always derived from them. Trajectories *generated in* DCV (e.g. by the NN outside
+the sim) currently have no ingestion path back into a run — see **OPEN-13**.
 
 ## 4. IF-2 — Runtime inference: observation contract `los_v1`
 
@@ -284,3 +287,4 @@ sim — no ML runtime dependency; the identical forward pass is ~10 lines in any
 | OPEN-10 | Target RCS | not modeled | proposal: optional `rcs` in `tspi-model/1` as a **class** (`small`\|`medium`\|`large`) — classes keep this repo's notional-data rule — carried additively into the `.tspi` footer entity entry and exposed in the IF-1 target block; numeric/aspect-dependent signatures would belong to the future sensor contract (OPEN-5). Are classes sufficient, and what class ↔ platform mapping do SMEs want? |
 | OPEN-11 | Track uncertainty | IC dispersions only (diagonal NED sigmas at t=0); no recorded or time-varying covariance | proposal: full 3×3 covariances as 6-element upper triangles (the rotated ellipsoid), per sample via the format's reserved layout evolution (layout 2 = +pos cov, stride 96; layout 3 = +pos & vel cov, stride 120); IF-1 target block gains `pos_cov [N×6]` additively. Truth records never carry fabricated covariance — it attaches to measured (`tspi import`) or synthesized-degraded tracks, where an authored piecewise covariance timeline (maneuver-style segments) would drive the degradation and could feed the model as an input alongside OPEN-5. Which of the three do SMEs need: fuller IC dispersion, recorded covariance, or the authored timeline? |
 | OPEN-12 | Rotational data in DCV | `tspi-dcv/1` carries attitude body→NED and body rates in the body frame; only positions/velocities are expressed in DCV (§3.4 — DCV is a left-handed plotting triple, so quaternions were deliberately not re-expressed) | do SMEs/the NN need attitude and/or body rates in a DCV-aligned convention (e.g. Euler angles about D/C/V, or a right-handed DCV variant frame for rotational states)? If yes, that ships as a new versioned view (`tspi-dcv/2`) with the convention SMEs specify |
+| OPEN-13 | Ingesting DCV-generated fly-outs | trajectories **generated in DCV** (the NN's training frame) have no direct path back into a run: `tspi import` accepts scene-NED CSV only, and an imported track carries no launch event, so it would not appear as an engagement in any view. The geometry itself is closed — every shipment carries `frame.origin_ned_m` + `frame.dcv_from_ned` + `origin_lla`, so DCV→NED is exact (`p_ned = origin + Rᵀ·p_dcv`) | is round-tripping NN-generated DCV trajectories into runs required (vs. only flying delivered policies in-sim via `tspi append`, which needs no conversion)? If yes: proposed shape is a converter at the boundary (DCV+frame → NED for `tspi import`) plus a declared launch event (munition/target ids + t) so the injected fly-out becomes an engagement — the `.tspi` itself stays NED-only, one frame per file |
