@@ -117,3 +117,23 @@ def dcv_flyouts(paths, window_s: float | None = 100.0) -> list[DcvFlyout]:
             outcome=e.outcome,
         ))
     return out
+
+
+def save_mat(path: str, flys: list[DcvFlyout]) -> None:
+    """One-file shipment for MATLAB: a 1xN struct array `flyouts`.
+
+    A shipment, not a store — regenerate from the .tspi runs when in doubt
+    (mirrors engagements.save_mat). Requires scipy. Import as
+    `from tspi_py.dcv import save_mat`; loads as F.flyouts(k).munition.pos_dcv_m etc."""
+    from scipy.io import savemat
+
+    def ns(x):
+        return {k: ("" if v is None else v) for k, v in vars(x).items()}
+
+    savemat(path, {
+        "schema": DcvFlyout.schema,
+        "flyouts": np.array(
+            [{"meta": ns(f.meta), "frame": ns(f.frame), "launch": ns(f.launch),
+              "munition": ns(f.munition), "target": ns(f.target), "outcome": ns(f.outcome)}
+             for f in flys]),
+    }, do_compression=True)

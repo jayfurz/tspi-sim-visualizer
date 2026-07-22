@@ -88,6 +88,20 @@ def test_round_trip_to_ned(f, fly):
         np.linalg.norm(dart["vel"].astype(np.float64), axis=1), atol=1e-6)
 
 
+def test_save_mat_round_trips(f, fly, tmp_path):
+    scipy_io = pytest.importorskip("scipy.io")
+    from tspi_py.dcv import save_mat
+
+    out = str(tmp_path / "flyouts.mat")
+    save_mat(out, [fly])
+    loaded = scipy_io.loadmat(out, simplify_cells=True)
+    assert loaded["schema"] == "tspi-dcv/1"
+    got = loaded["flyouts"]  # 1-element struct array simplifies to a dict
+    np.testing.assert_allclose(got["munition"]["pos_dcv_m"], fly.munition.pos_dcv_m)
+    np.testing.assert_allclose(got["frame"]["dcv_from_ned"], fly.frame.dcv_from_ned)
+    assert got["launch"]["munition_id"] == "dart-01"
+
+
 def test_windowing_matches_engagement_semantics(f):
     tight = dcv_flyouts(GOLDEN, window_s=1.0)[0]
     assert tight.munition.t_s[-1] == pytest.approx(1.5, abs=f.dt_s)
