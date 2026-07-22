@@ -1,0 +1,14 @@
+; Engine configuration file — Godot 4.4.
+; Playback-only .tspi viewer; see godot/README.md.
+
+config_version=5
+
+[application]
+
+config/name="TspiViewer"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "Forward Plus")
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
