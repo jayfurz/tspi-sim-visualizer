@@ -103,6 +103,43 @@ recorded track. Slices are zero-copy either way:
 - Target tracks are **simulation truth** (or measured truth for imported runs, tagged in
   provenance `dynamics: measured+…`). No sensor model is applied — see **OPEN-5**.
 
+### 3.4 Launch-frame variant: `tspi-dcv/1`
+
+For training/analysis in launch-centred **downrange / crossrange / vertical**
+coordinates. A separate versioned view (per §6 rule 2 — `tspi-engagement/1` is
+unchanged), rebuilt from the same runs (`tspi_py.dcv.dcv_flyouts(paths, window_s)`);
+one record per launch event. Unlike `tspi-engagement/1` it also carries the
+**munition track**. Training may consume either view; the runtime observation
+contract remains `los_v1` (§4) regardless.
+
+Frame, fixed per record at the launch instant:
+
+| Axis | Definition |
+|---|---|
+| **D** downrange | horizontal unit vector from the munition's launch position toward the target's position at launch; falls back to the horizontal launch-velocity heading when the target is directly overhead (`frame.downrange_ref` = `target` \| `launch_velocity`) |
+| **C** crossrange | positive to the **right** of the shot line viewed from above |
+| **V** vertical | positive up (height above the launch point) |
+
+`(D, C, V)` is a deliberate **left-handed** coordinate triple (det = −1): convenient
+for plotting/feature axes, not a dynamics frame — attitude quaternions therefore stay
+**body→NED** and are never re-expressed in DCV. `p_dcv = R·(p_ned − origin)`,
+`p_ned = origin + Rᵀ·p_dcv`.
+
+Record layout — `meta`, `launch` (t_s + the three ids), and `outcome` as in §3.1, plus:
+
+| Field | Type | Units | Description |
+|---|---|---|---|
+| `frame.origin_ned_m` | f64[3] | m | munition position at launch |
+| `frame.dcv_from_ned` | f64[3×3] | | orthogonal row matrix [D̂; Ĉ; V̂] in NED |
+| `frame.downrange_ref` | string | | which reference fixed the bearing (above) |
+| `munition.*`, `target.*` | | | both tracks, windowed to the fly-out exactly as §3.1: `dt_s`, `t0_s`, `t_s [N]`, `pos_dcv_m` f64[N×3], `vel_dcv_mps` f64[N×3], `att_wxyz` f32[N×4] (body→NED), `omega_body_rps` f32[N×3] |
+
+Converted positions/velocities are f64 **copies** (the rotation is computed in f64);
+velocity precision remains f32-limited by the recorded source data — shipments must
+not present it as better than that. Shipment: `tspi_py.dcv.save_mat` → single `.mat`,
+1×N struct array `flyouts` (loads as `F.flyouts(k).munition.pos_dcv_m`); MATLAB
+in-repo reader parity falls under **OPEN-1**.
+
 ## 4. IF-2 — Runtime inference: observation contract `los_v1`
 
 In-process call from the sim to the loaded model, once per sim step `dt`, output held
@@ -162,8 +199,8 @@ sim — no ML runtime dependency; the identical forward pass is ~10 lines in any
 
 ## 6. Versioning & change control
 
-1. Named shapes are **frozen**: `tspi-engagement/1`, `los_v1`, `tspi-policy/1` never
-   change layout, meaning, or units.
+1. Named shapes are **frozen**: `tspi-engagement/1`, `tspi-dcv/1`, `los_v1`,
+   `tspi-policy/1` never change layout, meaning, or units.
 2. Needs beyond a frozen shape → a **new versioned id** (`los_v2`, `tspi-engagement/2`);
    producers/consumers negotiate by name. JSON containers may gain keys additively;
    consumers must ignore unknown keys.
@@ -174,7 +211,8 @@ sim — no ML runtime dependency; the identical forward pass is ~10 lines in any
 ## 7. Verification
 
 - IF-1: pytest in `tools/tspi_py/tests` (golden `.tspi` committed; cross-language
-  contract with the C# writer and JS reader).
+  contract with the C# writer and JS reader). `tspi-dcv/1` frame/round-trip/windowing
+  is pinned by `test_dcv.py` against the same golden file.
 - IF-2/IF-3: `GuidanceTests` byte-locks pronav per-stage and the MLP forward pass;
   the determinism contract (`manifest + models + seed + sim_version → byte-identical
   .tspi`) pins any delivered policy's behavior platform-wide.
