@@ -150,14 +150,43 @@
     });
     return { buf: staticBuffer(new Float32Array(v)), count: faces.length * 3 };
   })();
-  function drawMarker(model, color) {
-    gl.bindBuffer(gl.ARRAY_BUFFER, MARKER.buf);
+  // Ship marker: pointed bow at -Z, flat transom, deck + superstructure block.
+  var SHIP = (function () {
+    var bowT = [0, 0.3, -2.2], bowB = [0, -0.3, -2.0];
+    var pbT = [-0.8, 0.3, -0.6], sbT = [0.8, 0.3, -0.6];
+    var pbB = [-0.7, -0.3, -0.6], sbB = [0.7, -0.3, -0.6];
+    var psT = [-0.8, 0.3, 1.8], ssT = [0.8, 0.3, 1.8];
+    var psB = [-0.7, -0.3, 1.8], ssB = [0.7, -0.3, 1.8];
+    var faces = [
+      [bowT, pbT, sbT, 0.95],                            // foredeck
+      [pbT, psT, ssT, 0.88], [pbT, ssT, sbT, 0.88],      // main deck
+      [bowT, bowB, pbB, 0.62], [bowT, pbB, pbT, 0.62],   // port bow
+      [bowT, sbB, bowB, 0.74], [bowT, sbT, sbB, 0.74],   // starboard bow
+      [pbT, pbB, psB, 0.55], [pbT, psB, psT, 0.55],      // port side
+      [sbT, ssB, sbB, 0.70], [sbT, ssT, ssB, 0.70],      // starboard side
+      [psT, psB, ssB, 0.45], [psT, ssB, ssT, 0.45],      // transom
+    ];
+    var x0 = -0.45, x1 = 0.45, z0 = -0.5, z1 = 0.7, y0 = 0.3, y1 = 0.85;
+    var a = [x0, y1, z0], b = [x1, y1, z0], c = [x1, y1, z1], d = [x0, y1, z1];
+    var e = [x0, y0, z0], f = [x1, y0, z0], g = [x1, y0, z1], h = [x0, y0, z1];
+    faces.push([a, b, c, 1.0], [a, c, d, 1.0],           // superstructure top
+      [e, a, d, 0.6], [e, d, h, 0.6], [f, c, b, 0.78], [f, g, c, 0.78],
+      [e, b, a, 0.85], [e, f, b, 0.85], [h, d, c, 0.5], [h, c, g, 0.5]);
+    var v = [];
+    faces.forEach(function (fc) {
+      for (var i = 0; i < 3; i++) v.push(fc[i][0], fc[i][1], fc[i][2], fc[3]);
+    });
+    return { buf: staticBuffer(new Float32Array(v)), count: faces.length * 3 };
+  })();
+
+  function drawMarker(geom, model, color) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, geom.buf);
     gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 16, 0);
     gl.enableVertexAttribArray(loc.aShade);
     gl.vertexAttribPointer(loc.aShade, 1, gl.FLOAT, false, 16, 12);
     gl.uniformMatrix4fv(loc.uModel, false, model);
     gl.uniform4fv(loc.uColor, color);
-    gl.drawArrays(gl.TRIANGLES, 0, MARKER.count);
+    gl.drawArrays(gl.TRIANGLES, 0, geom.count);
   }
 
   var poleBuf = gl.createBuffer(); // per-entity altitude pole, rewritten each draw
@@ -185,7 +214,8 @@
       views.push({
         e: e, step: step, nPts: n, buf: staticBuffer(pts),
         color: teamColor(e.team),
-        scaleBase: e.type === 'munition' ? 0.45 : 1.0,
+        marker: e.type === 'ship' ? SHIP : MARKER,
+        scaleBase: e.type === 'munition' ? 0.45 : e.type === 'ship' ? 1.7 : 1.0,
         row: null, alive: undefined,
       });
     });
@@ -508,7 +538,7 @@
       var right = norm(cross(fwd, up));
       up = cross(right, fwd);
       var s = Math.min(Math.max(len(sub(p, eye)) * 0.014, 2), scene.radius * 0.2) * view.scaleBase;
-      drawMarker(matBasis(scale(right, s), scale(up, s), scale(fwd, -s), p), [c[0], c[1], c[2], 1]);
+      drawMarker(view.marker, matBasis(scale(right, s), scale(up, s), scale(fwd, -s), p), [c[0], c[1], c[2], 1]);
     });
 
     if (!scrubbing) scrub.value = String((timeSec - scene.span.min) / scene.duration);
