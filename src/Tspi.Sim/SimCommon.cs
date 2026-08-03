@@ -4,7 +4,9 @@ namespace Tspi.Sim;
 
 public static class SimInfo
 {
-    public const string Version = "0.1.0";
+    // 0.2.0: scenario manifests moved munitions to a top-level section with a
+    // `parent` field (breaking manifest change; golden regenerated).
+    public const string Version = "0.2.0";
 }
 
 public static class MathUtil

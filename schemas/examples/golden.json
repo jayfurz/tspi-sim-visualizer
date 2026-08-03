@@ -16,16 +16,7 @@
       "team": "blue",
       "type": "aircraft",
       "model": "generic-fighter",
-      "initial": { "pos_ned_m": [0, 0, -5000], "vel_ned_mps": [200, 0, 0] },
-      "munitions": [
-        {
-          "id": "dart-01",
-          "model": "generic-bomb",
-          "target": "red-01",
-          "launch": { "when": "time", "at_s": 0.5 },
-          "guidance": { "kind": "ballistic" }
-        }
-      ]
+      "initial": { "pos_ned_m": [0, 0, -5000], "vel_ned_mps": [200, 0, 0] }
     },
     {
       "id": "red-01",
@@ -33,6 +24,16 @@
       "type": "aircraft",
       "model": "generic-fighter",
       "initial": { "pos_ned_m": [8000, 500, -5000], "vel_ned_mps": [-200, 0, 0] }
+    }
+  ],
+  "munitions": [
+    {
+      "id": "dart-01",
+      "parent": "blue-01",
+      "model": "generic-bomb",
+      "target": "red-01",
+      "launch": { "when": "time", "at_s": 0.5 },
+      "guidance": { "kind": "ballistic" }
     }
   ]
 }

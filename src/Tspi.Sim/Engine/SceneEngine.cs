@@ -151,28 +151,26 @@ public static class SceneEngine
             };
         }
 
-        foreach (var e in m.Entities)
+        var entityById = m.Entities.ToDictionary(e => e.Id);
+        foreach (var mun in m.Munitions)
         {
-            foreach (var mun in e.Munitions)
-            {
-                if (mun.Launch == null) continue; // carried, never employed
-                models.TryResolve(mun.Model, out var mmodel, out _, out _);
-                var parentTrack = new MemTargetTrack(aircraftTracks[e.Id]);
-                var targetTrack = new MemTargetTrack(aircraftTracks[mun.Target]);
-                double? launchT = ResolveLaunchTime(mun.Launch, parentTrack, targetTrack, dt, 0.0, m.Scene.DurationS);
-                if (launchT == null) continue; // condition never met within the scenario
+            if (mun.Launch == null) continue; // carried, never employed
+            models.TryResolve(mun.Model, out var mmodel, out _, out _);
+            var parentTrack = new MemTargetTrack(aircraftTracks[mun.Parent]);
+            var targetTrack = new MemTargetTrack(aircraftTracks[mun.Target]);
+            double? launchT = ResolveLaunchTime(mun.Launch, parentTrack, targetTrack, dt, 0.0, m.Scene.DurationS);
+            if (launchT == null) continue; // condition never met within the scenario
 
-                uint ord = nextOrd++;
-                var (traj, events) = IntegrateMunition(
-                    mun, mmodel!, models, env, m.Seed, dt, launchT.Value,
-                    parentTrack, targetTrack,
-                    ord, aircraftOrd[mun.Target], m.Scene.OriginLla.AltM, m.Scene.DurationS);
-                yield return new Produced
-                {
-                    Id = mun.Id, Team = e.Team, Type = "munition", Model = mun.Model, Ord = ord,
-                    ParentOrd = aircraftOrd[e.Id], Traj = traj, Events = events,
-                };
-            }
+            uint ord = nextOrd++;
+            var (traj, events) = IntegrateMunition(
+                mun, mmodel!, models, env, m.Seed, dt, launchT.Value,
+                parentTrack, targetTrack,
+                ord, aircraftOrd[mun.Target], m.Scene.OriginLla.AltM, m.Scene.DurationS);
+            yield return new Produced
+            {
+                Id = mun.Id, Team = entityById[mun.Parent].Team, Type = "munition", Model = mun.Model, Ord = ord,
+                ParentOrd = aircraftOrd[mun.Parent], Traj = traj, Events = events,
+            };
         }
     }
 

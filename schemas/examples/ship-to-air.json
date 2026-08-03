@@ -31,15 +31,6 @@
       },
       "maneuvers": [
         { "at_s": 20.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 40, "g_limit": 0.2 } }
-      ],
-      "munitions": [
-        {
-          "id": "ship-01-sam-1",
-          "model": "generic-sam",
-          "target": "red-01",
-          "launch": { "when": "range_to_target", "less_than_m": 30000, "eject_mps": 35, "elevation_deg": 70 },
-          "guidance": { "kind": "pronav", "gain": 3.5 }
-        }
       ]
     },
     {
@@ -62,6 +53,16 @@
           "vertical": { "kind": "delta_alt", "delta_m": -2000, "rate_mps": 40 }
         }
       ]
+    }
+  ],
+  "munitions": [
+    {
+      "id": "ship-01-sam-1",
+      "parent": "ship-01",
+      "model": "generic-sam",
+      "target": "red-01",
+      "launch": { "when": "range_to_target", "less_than_m": 30000, "eject_mps": 35, "elevation_deg": 70 },
+      "guidance": { "kind": "pronav", "gain": 3.5 }
     }
   ]
 }

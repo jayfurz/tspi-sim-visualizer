@@ -190,50 +190,53 @@ public static class ManifestValidator
                     Err($"{where}: speed set needs speed_mps >= 0 and accel_mps2 > 0");
             }
 
-            foreach (var mun in e.Munitions)
+        }
+
+        foreach (var mun in m.Munitions)
+        {
+            string mwhere = $"munition '{mun.Id}'";
+            if (string.IsNullOrEmpty(mun.Id)) Err("every munition needs a non-empty id");
+            else if (!ids.Add(mun.Id)) Err($"duplicate id '{mun.Id}'");
+            if (string.IsNullOrEmpty(mun.Parent)) Err($"{mwhere}: parent (launching entity id) is required");
+            else if (!entityIds.Contains(mun.Parent)) Err($"{mwhere}: parent '{mun.Parent}' is not a declared entity");
+            if (string.IsNullOrEmpty(mun.Target)) Err($"{mwhere}: target is required in v1 (pronav needs a track)");
+            else if (!entityIds.Contains(mun.Target)) Err($"{mwhere}: target '{mun.Target}' is not a declared entity");
+            else if (mun.Target == mun.Parent) Err($"{mwhere}: cannot target its own parent");
+            if (!models.TryResolve(mun.Model, out var mm, out _, out string mmErr))
+                Err($"{mwhere}: model '{mun.Model}': {mmErr}");
+            else if (mm!.Kind != "munition")
+                Err($"{mwhere}: model '{mun.Model}' has kind '{mm.Kind}', expected 'munition'");
+            if (mun.Launch is null)
+                Warn($"{mwhere}: no launch condition; it will be carried but never employed");
+            if (mun.Launch is LaunchAtTime lt && (lt.AtS < 0 || lt.AtS > s.DurationS))
+                Warn($"{mwhere}: launch at_s={lt.AtS}s is outside the scenario window");
+            if (mun.Launch is LaunchAtTime lt2 && mm != null
+                && lt2.AtS + mm.MaxFlightTimeS > s.DurationS)
+                Warn($"{mwhere}: fly-out may be truncated — launch at t={lt2.AtS}s + " +
+                     $"max_flight_time_s={mm.MaxFlightTimeS}s exceeds scene.duration_s={s.DurationS}s");
+            if (mun.Launch is LaunchAtRange lr && lr.LessThanM <= 0)
+                Err($"{mwhere}: launch less_than_m must be > 0");
+            if (mun.Launch is { } lk)
             {
-                string mwhere = $"munition '{mun.Id}' on '{e.Id}'";
-                if (string.IsNullOrEmpty(mun.Id)) Err($"{where}: every munition needs a non-empty id");
-                else if (!ids.Add(mun.Id)) Err($"duplicate id '{mun.Id}'");
-                if (string.IsNullOrEmpty(mun.Target)) Err($"{mwhere}: target is required in v1 (pronav needs a track)");
-                else if (!entityIds.Contains(mun.Target)) Err($"{mwhere}: target '{mun.Target}' is not a declared entity");
-                else if (mun.Target == e.Id) Err($"{mwhere}: cannot target its own parent");
-                if (!models.TryResolve(mun.Model, out var mm, out _, out string mmErr))
-                    Err($"{mwhere}: model '{mun.Model}': {mmErr}");
-                else if (mm!.Kind != "munition")
-                    Err($"{mwhere}: model '{mun.Model}' has kind '{mm.Kind}', expected 'munition'");
-                if (mun.Launch is null)
-                    Warn($"{mwhere}: no launch condition; it will be carried but never employed");
-                if (mun.Launch is LaunchAtTime lt && (lt.AtS < 0 || lt.AtS > s.DurationS))
-                    Warn($"{mwhere}: launch at_s={lt.AtS}s is outside the scenario window");
-                if (mun.Launch is LaunchAtTime lt2 && mm != null
-                    && lt2.AtS + mm.MaxFlightTimeS > s.DurationS)
-                    Warn($"{mwhere}: fly-out may be truncated — launch at t={lt2.AtS}s + " +
-                         $"max_flight_time_s={mm.MaxFlightTimeS}s exceeds scene.duration_s={s.DurationS}s");
-                if (mun.Launch is LaunchAtRange lr && lr.LessThanM <= 0)
-                    Err($"{mwhere}: launch less_than_m must be > 0");
-                if (mun.Launch is { } lk)
+                if (lk.EjectMps < 0) Err($"{mwhere}: launch eject_mps must be >= 0");
+                if (lk.ElevationDeg is < -90 or > 90)
+                    Err($"{mwhere}: launch elevation_deg must be within [-90, 90]");
+                if (lk.ElevationDeg != 0 && lk.EjectMps == 0)
+                    Warn($"{mwhere}: launch elevation_deg has no effect without eject_mps");
+            }
+            if (mun.Guidance is { } gd)
+            {
+                if (gd.Kind != "pronav" && gd.Kind != "ballistic" && gd.Kind != "nn")
+                    Err($"{mwhere}: guidance.kind must be 'pronav', 'ballistic', or 'nn' (got '{gd.Kind}')");
+                else if (gd.Kind == "nn")
                 {
-                    if (lk.EjectMps < 0) Err($"{mwhere}: launch eject_mps must be >= 0");
-                    if (lk.ElevationDeg is < -90 or > 90)
-                        Err($"{mwhere}: launch elevation_deg must be within [-90, 90]");
-                    if (lk.ElevationDeg != 0 && lk.EjectMps == 0)
-                        Warn($"{mwhere}: launch elevation_deg has no effect without eject_mps");
+                    if (string.IsNullOrEmpty(gd.Policy))
+                        Err($"{mwhere}: guidance.kind 'nn' requires guidance.policy");
+                    else if (!models.TryResolvePolicy(gd.Policy!, out _, out _, out string pErr))
+                        Err($"{mwhere}: guidance.policy '{gd.Policy}': {pErr}");
                 }
-                if (mun.Guidance is { } gd)
-                {
-                    if (gd.Kind != "pronav" && gd.Kind != "ballistic" && gd.Kind != "nn")
-                        Err($"{mwhere}: guidance.kind must be 'pronav', 'ballistic', or 'nn' (got '{gd.Kind}')");
-                    else if (gd.Kind == "nn")
-                    {
-                        if (string.IsNullOrEmpty(gd.Policy))
-                            Err($"{mwhere}: guidance.kind 'nn' requires guidance.policy");
-                        else if (!models.TryResolvePolicy(gd.Policy!, out _, out _, out string pErr))
-                            Err($"{mwhere}: guidance.policy '{gd.Policy}': {pErr}");
-                    }
-                    else if (!string.IsNullOrEmpty(gd.Policy))
-                        Warn($"{mwhere}: guidance.policy is ignored for kind '{gd.Kind}'");
-                }
+                else if (!string.IsNullOrEmpty(gd.Policy))
+                    Warn($"{mwhere}: guidance.policy is ignored for kind '{gd.Kind}'");
             }
         }
 

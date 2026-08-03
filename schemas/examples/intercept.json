@@ -33,15 +33,6 @@
       "maneuvers": [
         { "at_s": 0.0,  "speed": { "kind": "set", "speed_mps": 320, "accel_mps2": 8 } },
         { "at_s": 30.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 20, "g_limit": 4 } }
-      ],
-      "munitions": [
-        {
-          "id": "blue-01-aam-1",
-          "model": "generic-aam",
-          "target": "red-01",
-          "launch": { "when": "range_to_target", "less_than_m": 35000 },
-          "guidance": { "kind": "pronav", "gain": 4.0 }
-        }
       ]
     },
     {
@@ -64,6 +55,16 @@
           "vertical": { "kind": "delta_alt", "delta_m": -2500, "rate_mps": 45 }
         }
       ]
+    }
+  ],
+  "munitions": [
+    {
+      "id": "blue-01-aam-1",
+      "parent": "blue-01",
+      "model": "generic-aam",
+      "target": "red-01",
+      "launch": { "when": "range_to_target", "less_than_m": 35000 },
+      "guidance": { "kind": "pronav", "gain": 4.0 }
     }
   ]
 }

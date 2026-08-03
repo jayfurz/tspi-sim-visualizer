@@ -60,11 +60,6 @@ public class DeterminismTests
                 {
                     Id = "s", Team = "blue", Model = "fighter",
                     Initial = new InitialState { PosNedM = new[] { 0.0, 0, -8000 }, VelNedMps = new[] { 300.0, 0, 0 } },
-                    Munitions = new List<MunitionSpec>
-                    {
-                        new() { Id = "m", Model = "aam", Target = "b",
-                                Launch = new LaunchAtTime { AtS = 1 }, Guidance = new GuidanceSpec { Kind = "pronav" } },
-                    },
                 },
                 new()
                 {
@@ -72,6 +67,11 @@ public class DeterminismTests
                     Initial = new InitialState { PosNedM = new[] { 20000.0, 2000, -8000 }, VelNedMps = new[] { -250.0, 0, 0 } },
                     Dispersions = new DispersionSpec { PosNedSigmaM = new[] { 500.0, 500, 100 } },
                 },
+            },
+            Munitions = new List<MunitionSpec>
+            {
+                new() { Id = "m", Parent = "s", Model = "aam", Target = "b",
+                        Launch = new LaunchAtTime { AtS = 1 }, Guidance = new GuidanceSpec { Kind = "pronav" } },
             },
         };
     }

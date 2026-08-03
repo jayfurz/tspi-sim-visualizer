@@ -14,6 +14,9 @@ public sealed class ScenarioManifest
     public SceneSpec Scene { get; set; } = new();
     public OutputSpec Output { get; set; } = new();
     public List<EntitySpec> Entities { get; set; } = new();
+    /// <summary>Munitions live in their own top-level section; each names its launching
+    /// platform via `parent` (mirrors the addendum manifest's shape).</summary>
+    public List<MunitionSpec> Munitions { get; set; } = new();
 
     public const string SchemaId = "tspi-scenario/1";
 }
@@ -82,7 +85,6 @@ public sealed class EntitySpec
     public InitialState Initial { get; set; } = new();
     public DispersionSpec? Dispersions { get; set; }
     public List<ManeuverSegment> Maneuvers { get; set; } = new();
-    public List<MunitionSpec> Munitions { get; set; } = new();
 }
 
 public sealed class InitialState
@@ -143,6 +145,8 @@ public sealed class SpeedSet : SpeedCmd
 public sealed class MunitionSpec
 {
     public string Id { get; set; } = "";
+    /// <summary>Launching platform's entity id.</summary>
+    public string Parent { get; set; } = "";
     public string Model { get; set; } = "";
     /// <summary>Target entity id. Required in v1 (pronav needs a track).</summary>
     public string Target { get; set; } = "";

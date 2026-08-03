@@ -26,6 +26,11 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/entity" }
+    },
+    "munitions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/munition" },
+      "description": "Munitions are declared here, not on entities; each names its launching platform via 'parent' (same shape as the addendum manifest)."
     }
   },
   "$defs": {
@@ -116,8 +121,7 @@
             "vel_ned_sigma_mps": { "$ref": "#/$defs/vec3" }
           }
         },
-        "maneuvers": { "type": "array", "items": { "$ref": "#/$defs/maneuver" } },
-        "munitions": { "type": "array", "items": { "$ref": "#/$defs/munition" } }
+        "maneuvers": { "type": "array", "items": { "$ref": "#/$defs/maneuver" } }
       }
     },
     "maneuver": {
@@ -209,9 +213,10 @@
     "munition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "model", "target"],
+      "required": ["id", "parent", "model", "target"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "parent": { "type": "string", "minLength": 1, "description": "Launching platform's entity id" },
         "model": { "type": "string", "minLength": 1 },
         "target": { "type": "string", "minLength": 1 },
         "launch": {

@@ -218,7 +218,7 @@ public class GuidanceTests : IDisposable
         string manifestPath = Path.Combine(GoldenFileTests.RepoRoot(), "schemas", "examples", "nn-intercept.json");
         var (manifest, _, _) = ManifestJson.LoadScenario(manifestPath);
         var models = RepoModels();
-        var gd = manifest.Entities.First(e => e.Munitions.Count > 0).Munitions[0].Guidance!;
+        var gd = manifest.Munitions[0].Guidance!;
 
         gd.Policy = null;
         var v = ManifestValidator.Validate(manifest, models);

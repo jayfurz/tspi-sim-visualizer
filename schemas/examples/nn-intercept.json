@@ -18,16 +18,7 @@
       "initial": {
         "pos_ned_m": [0, 0, -8000],
         "vel_ned_mps": [300, 0, 0]
-      },
-      "munitions": [
-        {
-          "id": "blue-01-aam-1",
-          "model": "generic-aam",
-          "target": "red-01",
-          "launch": { "when": "range_to_target", "less_than_m": 35000 },
-          "guidance": { "kind": "nn", "policy": "generic-nn-losrate" }
-        }
-      ]
+      }
     },
     {
       "id": "red-01",
@@ -41,6 +32,16 @@
       "maneuvers": [
         { "at_s": 8.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 110, "g_limit": 5 } }
       ]
+    }
+  ],
+  "munitions": [
+    {
+      "id": "blue-01-aam-1",
+      "parent": "blue-01",
+      "model": "generic-aam",
+      "target": "red-01",
+      "launch": { "when": "range_to_target", "less_than_m": 35000 },
+      "guidance": { "kind": "nn", "policy": "generic-nn-losrate" }
     }
   ]
 }

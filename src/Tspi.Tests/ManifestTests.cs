@@ -25,7 +25,7 @@ public class ManifestTests
         Assert.Equal(0UL, m.Seed);
         Assert.Equal("exp8500", m.Scene.Environment.Atmosphere);
         Assert.Equal("gray", m.Entities[0].Team);
-        Assert.Empty(m.Entities[0].Munitions);
+        Assert.Empty(m.Munitions);
         Assert.Null(m.Entities[0].Initial.AttYprDeg);
     }
 
@@ -84,15 +84,15 @@ public class ManifestTests
           "schema": "tspi-scenario/1", "name": "m",
           "scene": { "origin_lla": {"lat_deg":0,"lon_deg":0,"alt_m":0}, "duration_s": 10, "dt_s": 0.1 },
           "entities": [ { "id": "a", "model": "f", "team": "blue",
-            "initial": { "pos_ned_m": [0,0,-1000], "vel_ned_mps": [200,0,0] },
-            "munitions": [
-              { "id": "m1", "model": "aam", "target": "b",
-                "launch": { "when": "range_to_target", "less_than_m": 15000 } } ] },
+            "initial": { "pos_ned_m": [0,0,-1000], "vel_ned_mps": [200,0,0] } },
             { "id": "b", "model": "f",
-              "initial": { "pos_ned_m": [20000,0,-1000], "vel_ned_mps": [-200,0,0] } } ]
+              "initial": { "pos_ned_m": [20000,0,-1000], "vel_ned_mps": [-200,0,0] } } ],
+          "munitions": [
+            { "id": "m1", "parent": "a", "model": "aam", "target": "b",
+              "launch": { "when": "range_to_target", "less_than_m": 15000 } } ]
         }
         """);
-        var launch = Assert.IsType<LaunchAtRange>(m.Entities[0].Munitions[0].Launch);
+        var launch = Assert.IsType<LaunchAtRange>(m.Munitions[0].Launch);
         Assert.Equal(15000, launch.LessThanM);
     }
 
@@ -106,9 +106,9 @@ public class ManifestTests
           "schema": "tspi-scenario/1", "name": "m",
           "scene": { "origin_lla": {"lat_deg":0,"lon_deg":0,"alt_m":0}, "duration_s": 10, "dt_s": 0.1 },
           "entities": [ { "id": "a", "model": "fighter",
-            "initial": { "pos_ned_m": [0,0,-1000], "vel_ned_mps": [200,0,0] },
-            "munitions": [ { "id": "m1", "model": "fighter", "target": "ghost",
-                             "launch": { "when": "time", "at_s": 1 } } ] } ]
+            "initial": { "pos_ned_m": [0,0,-1000], "vel_ned_mps": [200,0,0] } } ],
+          "munitions": [ { "id": "m1", "parent": "a", "model": "fighter", "target": "ghost",
+                           "launch": { "when": "time", "at_s": 1 } } ]
         }
         """);
         var r = ManifestValidator.Validate(m, models);

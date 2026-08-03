@@ -79,15 +79,12 @@ public class PhysicsVandVTests
         {
             Id = "launcher", Team = "blue", Model = "fighter",
             Initial = new InitialState { PosNedM = new[] { 0.0, 0, -5000 }, VelNedMps = new[] { 200.0, 0, -100 } },
-            Munitions = new List<MunitionSpec>
-            {
-                new()
-                {
-                    Id = "bomb", Model = "ballistic", Target = "launcher",
-                    Launch = new LaunchAtTime { AtS = 0.0 },
-                    Guidance = new GuidanceSpec { Kind = "ballistic" },
-                },
-            },
+        });
+        m.Munitions.Add(new MunitionSpec
+        {
+            Id = "bomb", Parent = "launcher", Model = "ballistic", Target = "launcher",
+            Launch = new LaunchAtTime { AtS = 0.0 },
+            Guidance = new GuidanceSpec { Kind = "ballistic" },
         });
         var result = SceneEngine.RunScenario(m, ModelsBuilt());
         var bomb = result.Entities.First(e => e.Id == "bomb").Traj;
@@ -151,15 +148,12 @@ public class PhysicsVandVTests
         {
             Id = "shooter", Team = "blue", Model = "fighter",
             Initial = new InitialState { PosNedM = new[] { 0.0, 0, -8000 }, VelNedMps = new[] { 300.0, 0, 0 } },
-            Munitions = new List<MunitionSpec>
-            {
-                new()
-                {
-                    Id = "aam1", Model = "aam", Target = "bandit",
-                    Launch = new LaunchAtTime { AtS = 0.0 },
-                    Guidance = new GuidanceSpec { Kind = "pronav", Gain = 4 },
-                },
-            },
+        });
+        m.Munitions.Add(new MunitionSpec
+        {
+            Id = "aam1", Parent = "shooter", Model = "aam", Target = "bandit",
+            Launch = new LaunchAtTime { AtS = 0.0 },
+            Guidance = new GuidanceSpec { Kind = "pronav", Gain = 4 },
         });
         m.Entities.Add(new EntitySpec
         {
