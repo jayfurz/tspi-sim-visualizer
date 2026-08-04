@@ -87,6 +87,9 @@ the Python and JS readers. See `godot/README.md`.
 
 ## Documentation
 
+- `docs/WALKTHROUGH.md` — **start here**: one manifest driven through the whole
+  pipeline (validate → run → inspect → analysis → browser viewer), real outputs at
+  every stage
 - `docs/FORMAT.md` — the `.tspi` container, normative (header/records/footer/trailer,
   append & recovery, layout-evolution rules)
 - `docs/CONVENTIONS.md` — frames, quaternion, time, units, determinism (read first)
