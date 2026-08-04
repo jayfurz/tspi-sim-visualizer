@@ -162,10 +162,14 @@ public static class SceneEngine
             if (launchT == null) continue; // condition never met within the scenario
 
             uint ord = nextOrd++;
-            var (traj, events) = IntegrateMunition(
-                mun, mmodel!, models, env, m.Seed, dt, launchT.Value,
-                parentTrack, targetTrack,
-                ord, aircraftOrd[mun.Target], m.Scene.OriginLla.AltM, m.Scene.DurationS);
+            var (traj, events) = MunitionTrajectoryModels.Default.Flyout(new MunitionFlyoutRequest
+            {
+                Spec = mun, Model = mmodel!, Models = models, Environment = env,
+                Seed = m.Seed, DtSec = dt, LaunchSec = launchT.Value,
+                ParentTrack = parentTrack, TargetTrack = targetTrack,
+                Ord = ord, TargetOrd = aircraftOrd[mun.Target],
+                OriginAltM = m.Scene.OriginLla.AltM, DurationS = m.Scene.DurationS,
+            });
             yield return new Produced
             {
                 Id = mun.Id, Team = entityById[mun.Parent].Team, Type = "munition", Model = mun.Model, Ord = ord,
@@ -225,9 +229,14 @@ public static class SceneEngine
             {
                 Id = mun.Id, Model = mun.Model, Target = mun.Target, Launch = mun.Launch, Guidance = mun.Guidance,
             };
-            var (traj, events) = IntegrateMunition(
-                munSpec, mmodel!, models, env, a.Seed, dt, launchT.Value,
-                parentTrack, targetTrack, ord, target.Ord, result.Origin.AltM, durationS);
+            var (traj, events) = MunitionTrajectoryModels.Default.Flyout(new MunitionFlyoutRequest
+            {
+                Spec = munSpec, Model = mmodel!, Models = models, Environment = env,
+                Seed = a.Seed, DtSec = dt, LaunchSec = launchT.Value,
+                ParentTrack = parentTrack, TargetTrack = targetTrack,
+                Ord = ord, TargetOrd = target.Ord,
+                OriginAltM = result.Origin.AltM, DurationS = durationS,
+            });
             result.OrdToId[ord] = mun.Id;
             result.Entities.Add(new EntityTrajectory
             {
@@ -348,195 +357,6 @@ public static class SceneEngine
 
     /// <summary>Manifest guidance spec -> law. The validator has already vetted kinds and
     /// policy resolvability; failures here are hard errors, not silent fallbacks.</summary>
-    private static IGuidanceLaw? BuildGuidanceLaw(GuidanceSpec? g, VehicleModel model, ModelLibrary models)
-    {
-        switch (g?.Kind ?? "pronav")
-        {
-            case "ballistic":
-                return null;
-            case "pronav":
-                return new PronavLaw(g?.Gain ?? model.PronavGainDefault);
-            case "nn":
-                if (string.IsNullOrEmpty(g!.Policy))
-                    throw new InvalidOperationException("guidance.kind 'nn' requires guidance.policy");
-                if (!models.TryResolvePolicy(g.Policy!, out var policy, out _, out string err))
-                    throw new InvalidOperationException($"guidance policy '{g.Policy}': {err}");
-                return new MlpGuidanceLaw(policy!);
-            default:
-                throw new InvalidOperationException($"unknown guidance.kind '{g!.Kind}'");
-        }
-    }
-
-    /// <summary>Birth-velocity kick: elevation above horizontal, azimuth along the
-    /// launch->target bearing (parent heading, then north, when degenerate).</summary>
-    private static Vec3d EjectKick(LaunchSpec kick, Vec3d fromPos, Vec3d fromVel, Vec3d targetPos)
-    {
-        Vec3d toTarget = targetPos - fromPos;
-        var bearing = new Vec3d(toTarget.X, toTarget.Y, 0);
-        if (bearing.Length < 1e-6) bearing = new Vec3d(fromVel.X, fromVel.Y, 0);
-        if (bearing.Length < 1e-6) bearing = new Vec3d(1, 0, 0);
-        bearing /= bearing.Length;
-        double el = kick.ElevationDeg * System.Math.PI / 180.0;
-        return new Vec3d(
-            System.Math.Cos(el) * bearing.X,
-            System.Math.Cos(el) * bearing.Y,
-            -System.Math.Sin(el)) * kick.EjectMps;
-    }
-
-    private static (Trajectory, List<TspiEventEntry>) IntegrateMunition(
-        MunitionSpec mun, VehicleModel model, ModelLibrary models, Environment env, ulong seed, double dt,
-        double launchSec, ITargetTrack parentTrack, ITargetTrack targetTrack, uint ord, uint targetOrd,
-        double originAltM, double durationS)
-    {
-        var events = new List<TspiEventEntry>();
-        var start = parentTrack.SampleAt(launchSec);
-        var state = new MotionState { Pos = start.Pos, Vel = start.Vel };
-        // Optional separation/booster kick (VLS/rail model) — guarded so legacy
-        // manifests (eject_mps absent/0) integrate byte-identically.
-        if (mun.Launch is { EjectMps: > 0 } kick)
-            state.Vel += EjectKick(kick, start.Pos, start.Vel, targetTrack.SampleAt(launchSec).Pos);
-        var dyn = new MunitionDynamics(model, BuildGuidanceLaw(mun.Guidance, model, models), launchSec);
-        var windSampler = env.CreateSampler(new RngStream(seed, "wind:" + mun.Id));
-
-        var traj = new Trajectory { T0Sec = launchSec, DtSec = dt };
-        events.Add(new TspiEventEntry
-        {
-            TNs = SecToNs(launchSec), Kind = "launch", SrcOrd = ord, DstOrd = targetOrd,
-        });
-
-        double prevRange = double.MaxValue;
-        string terminal = "expire";
-        double endT = System.Math.Min(durationS, launchSec + model.MaxFlightTimeS);
-
-        double t = launchSec;
-        int guard = 0;
-        int maxSteps = (int)System.Math.Round((endT - launchSec) / dt) + 2;
-        while (t <= endT + 1e-9 && guard++ <= maxSteps)
-        {
-            var tgtNow = targetTrack.SampleAt(t);
-            double range = (tgtNow.Pos - state.Pos).Length;
-            var att = dyn.Attitude(state);
-            traj.Add(state.Pos, state.Vel, att);
-
-            // Endgame termination applies only to guided munitions; an unguided
-            // projectile is not "intercepting" and flies until ground/expire.
-            if (dyn.Guided)
-            {
-                // Fuze: intercept when inside lethal radius. Refine the closest point to
-                // sub-dt precision — CPA almost never lands on a sample boundary, and the
-                // reported miss distance is the number the whole campaign turns on.
-                if (range <= model.FuzeRadiusM)
-                {
-                    terminal = "intercept";
-                    var (tStar, missStar) = RefineCpa(traj, targetTrack, System.Math.Max(launchSec, t - dt), t);
-                    events.Add(MakeCpa(ord, targetOrd, tStar, missStar));
-                    events.Add(new TspiEventEntry { TNs = SecToNs(tStar), Kind = "intercept", SrcOrd = ord, DstOrd = targetOrd,
-                        Data = new Dictionary<string, object> { { "miss_m", System.Math.Round(missStar, 3) } } });
-                    break;
-                }
-                // CPA passed (range began increasing after closing): the minimum lies in the
-                // last two intervals; refine it sub-dt and record the miss.
-                if (range > prevRange && guard > 2)
-                {
-                    terminal = "miss";
-                    var (tStar, missStar) = RefineCpa(traj, targetTrack, System.Math.Max(launchSec, t - 2 * dt), t);
-                    events.Add(MakeCpa(ord, targetOrd, tStar, missStar));
-                    break;
-                }
-                prevRange = range;
-            }
-
-            // Ground impact (flat-earth MSL at origin altitude). Interpolate the crossing
-            // time between the previous (above-ground) and current (at/below) samples.
-            double altMsl = originAltM - state.Pos.Z;
-            if (altMsl <= 0.0 && t > launchSec)
-            {
-                double tImpact = t;
-                int k = traj.Count - 1;
-                if (k >= 1)
-                {
-                    double prevAlt = originAltM - traj.Pos[k - 1].Z;
-                    double denom = prevAlt - altMsl;
-                    if (denom > 1e-9) tImpact = (t - dt) + dt * (prevAlt / denom);
-                }
-                terminal = "ground_impact";
-                events.Add(new TspiEventEntry { TNs = SecToNs(tImpact), Kind = "ground_impact", SrcOrd = ord });
-                break;
-            }
-
-            if (t >= endT - 1e-9) { terminal = "expire"; break; }
-
-            double rho = env.Density(state.Pos.Z, originAltM);
-            // Hold-across-step laws (learned policies): evaluate once per sample against
-            // the air-relative state, then RK4 integrates the held command (ZOH) so the
-            // policy never sees mid-step states. Pronav skips this and stays per-stage.
-            if (dyn.WantsHeldCommand)
-            {
-                Vec3d wind0 = windSampler.Wind(originAltM - state.Pos.Z);
-                dyn.UpdateHeldCommand(t, new MotionState { Pos = state.Pos, Vel = state.Vel - wind0 }, tgtNow);
-            }
-            state = Rk4(state, t, dt, (tt, s) =>
-            {
-                Vec3d wind = windSampler.Wind(originAltM - s.Pos.Z);
-                var air = new MotionState { Pos = s.Pos, Vel = s.Vel - wind };
-                var tgt = targetTrack.SampleAt(tt);
-                return dyn.Acceleration(tt, air, tgt, env.Density(s.Pos.Z, originAltM))
-                       + wind * 0.0; // wind enters via air-relative drag; ground-frame accel unchanged
-            });
-            windSampler.Step(dt);
-            t += dt;
-        }
-
-        if (terminal == "expire")
-            events.Add(new TspiEventEntry { TNs = SecToNs(System.Math.Min(t, endT)), Kind = "expire", SrcOrd = ord });
-        return (traj, events);
-    }
-
-    private static TspiEventEntry MakeCpa(uint ord, uint targetOrd, double tSec, double rangeM) => new()
-    {
-        TNs = SecToNs(tSec), Kind = "cpa", SrcOrd = ord, DstOrd = targetOrd,
-        Data = new Dictionary<string, object> { { "miss_m", System.Math.Round(rangeM, 3) } },
-    };
-
-    /// <summary>
-    /// Sub-dt closest point of approach over [tA, tB]. Both tracks are smoothly
-    /// interpolable (missile via its recorded Hermite segment, target via its track),
-    /// so a fine scan plus a parabolic polish recovers the true minimum range and its
-    /// time to well under a millimeter for typical closing speeds.
-    /// </summary>
-    private static (double tStar, double missM) RefineCpa(Trajectory mun, ITargetTrack tgt, double tA, double tB)
-    {
-        if (tB <= tA) { double r = (tgt.SampleAt(tB).Pos - mun.SampleAt(tB).Pos).Length; return (tB, r); }
-        const int n = 64;
-        double h = (tB - tA) / n;
-        double Range(double t) => (tgt.SampleAt(t).Pos - mun.SampleAt(t).Pos).Length;
-        double bestT = tA, best = double.MaxValue;
-        int bestI = 0;
-        for (int i = 0; i <= n; i++)
-        {
-            double t = tA + h * i;
-            double r = Range(t);
-            if (r < best) { best = r; bestT = t; bestI = i; }
-        }
-        // Parabolic polish using the neighbors of the best grid point.
-        if (bestI > 0 && bestI < n)
-        {
-            double r0 = Range(bestT - h), r1 = best, r2 = Range(bestT + h);
-            double denom = r0 - 2 * r1 + r2;
-            if (denom > 1e-12)
-            {
-                double x = 0.5 * (r0 - r2) / denom;             // fractional offset in [-1,1]
-                if (x > -1 && x < 1)
-                {
-                    double tStar = bestT + x * h;
-                    double missStar = r1 - 0.125 * (r0 - r2) * (r0 - r2) / denom;
-                    return (tStar, System.Math.Max(0.0, missStar));
-                }
-            }
-        }
-        return (bestT, best);
-    }
-
     // ---------------- launch resolution ----------------
 
     private static double? ResolveLaunchTime(LaunchSpec launch, ITargetTrack parent, ITargetTrack target,
@@ -581,7 +401,7 @@ public static class SceneEngine
     }
 
     /// <summary>Classic RK4 for pos/vel with acceleration a(t, state).</summary>
-    private static MotionState Rk4(MotionState s, double t, double dt, Func<double, MotionState, Vec3d> accel)
+    internal static MotionState Rk4(MotionState s, double t, double dt, Func<double, MotionState, Vec3d> accel)
     {
         MotionState D(double tt, MotionState st) => new() { Pos = st.Vel, Vel = accel(tt, st) };
         MotionState k1 = D(t, s);

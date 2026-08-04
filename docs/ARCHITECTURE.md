@@ -68,9 +68,16 @@ this repo.
   body rates finite-differenced. With a model `rotational` block: attitude integrated
   from rigid-body EOM as above (notional inertia/torque authority, e.g.
   `models/generic-fighter-rb.json`). Lift implicitly balances gravity.
-- Munitions: point-mass with boost thrust along velocity, quadratic drag against the air
-  mass (exp-atmosphere), gravity, and a guidance law behind the **`IGuidanceLaw` seam**
-  (`src/Tspi.Sim/Engine/Guidance.cs`): true proportional navigation by default
+- Munitions: the entire fly-out generator sits behind the
+  **`IMunitionTrajectoryModel` seam** (`src/Tspi.Sim/Engine/IMunitionTrajectoryModel.cs`)
+  with a deliberate one-model-per-file rule: the stock generator is
+  `PointMassMunitionModel.cs`, and swapping in a different one (6-DoF, an external
+  NN fly-out producer, a HIL proxy) means adding a sibling file that implements the
+  interface and pointing `MunitionTrajectoryModels.Default` at it — the engine,
+  writers, and viewers never change. The stock model: point-mass with boost thrust
+  along velocity, quadratic drag against the air
+  mass (exp-atmosphere), gravity, and a guidance law behind the inner **`IGuidanceLaw`
+  seam** (`src/Tspi.Sim/Engine/Guidance.cs`): true proportional navigation by default
   (evaluated at every RK4 stage — byte-locked by the golden test), or a learned policy
   (`guidance.kind: "nn"`) — a hand-rolled f64 MLP over the versioned LOS-frame
   observation `los_v1`, evaluated once per output sample and zero-order-held across the
