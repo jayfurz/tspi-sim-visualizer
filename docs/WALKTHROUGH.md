@@ -7,10 +7,20 @@ stage: authoring input → simulation → the recorded file → the browser view
 Every command runs from the repo root and every output shown is real — re-run any
 of it and you get byte-identical results, because that is the point of this engine.
 
+Setup once (.NET 8 SDK from https://dot.net; both shells are supported and every
+command after this block is identical in either):
+
 ```sh
-# once: .NET 8 SDK (https://dot.net), then
-cd src && dotnet build Tspi.sln -c Release && cd ..
+# bash / zsh (Linux, macOS, WSL)
+dotnet build src/Tspi.sln -c Release
 alias tspi="dotnet $PWD/src/artifacts/bin/Tspi.Cli/Release/net8.0/tspi.dll"
+```
+
+```powershell
+# PowerShell (Windows; forward slashes are fine on .NET)
+dotnet build src/Tspi.sln -c Release
+$TspiDll = "$PWD/src/artifacts/bin/Tspi.Cli/Release/net8.0/tspi.dll"
+function tspi { dotnet $TspiDll @args }
 ```
 
 ## 1. The input: one manifest, three sections
@@ -130,8 +140,8 @@ What just happened, in order:
 Determinism is a contract, not a hope: run it twice and compare —
 
 ```
-$ tspi run schemas/examples/ship-to-air.json -o /tmp/again.tspi --quiet
-$ tspi diff runs/ship-to-air.tspi /tmp/again.tspi     # byte-identical
+$ tspi run schemas/examples/ship-to-air.json -o runs/again.tspi --quiet
+$ tspi diff runs/ship-to-air.tspi runs/again.tspi     # byte-identical
 ```
 
 ## 4. What landed in the file
@@ -164,21 +174,14 @@ manifest *and* the exact model files (SHA-256 each — including guidance policy
 weights when an NN flies), so any `.tspi` is attributable forever.
 
 Analysis reads the same file zero-copy (and the launch-centred DCV view is the
-struct SMEs review — docs/ICD-NN.md §3.4):
+struct SMEs review — docs/ICD-NN.md §3.4). After `pip install -e "tools/tspi_py[test]"`
+(the command is shell-neutral; use your venv's `python`/`python3`):
 
 ```
-$ python3 - <<'EOF'
-from tspi_py import TspiFile
-from tspi_py.dcv import dcv_flyouts
-f = TspiFile("runs/ship-to-air.tspi")
-sam = f.samples("ship-01-sam-1")
-print(f, "| SAM peak speed", round(max((sam["vel"]**2).sum(axis=1))**0.5), "m/s")
-m = dcv_flyouts("runs/ship-to-air.tspi")[0].munition
-print("DCV: apogee", round(m.pos_dcv_m[:,2].max()), "m, terminal at",
-      round(m.pos_dcv_m[-1,0]/1000, 1), "km downrange")
-EOF
-TspiFile('runs/ship-to-air.tspi', 3 entities, dt=10 ms, events=3) | SAM peak speed 679 m/s
-DCV: apogee 4027 m, terminal at 17.9 km downrange
+$ python scripts/walkthrough_analysis.py runs/ship-to-air.tspi
+TspiFile('runs/ship-to-air.tspi', 3 entities, dt=10 ms, events=3)
+ship-01-sam-1: peak speed 679 m/s
+ship-01-sam-1 in DCV: apogee 4027 m, terminal at 17.9 km downrange, intercept (miss 8.4 m)
 ```
 
 ## 5. Watch it in the browser
@@ -215,7 +218,7 @@ before your edit identically, so it feels like branching the world from "now".
 - **More munitions against this run, without re-simulating it** —
   `tspi append runs/ship-to-air.tspi <addendum.json>` (old bytes never change).
 - **A campaign** — `tspi sweep schemas/examples/ship-to-air.json --seeds 1:200 -j 10
-  --out-dir /tmp/sweep`; the dispersions above make every seed a different engagement.
+  --out-dir runs/sweep`; the dispersions above make every seed a different engagement.
 - **Training data** — `tspi_py.engagements()` / `tspi_py.dcv.dcv_flyouts()` rebuild
   the ICD's per-engagement views straight from run files (docs/ICD-NN.md).
 - **Other viewers** — the same file plays in Unity (`unity/README.md`, includes the
