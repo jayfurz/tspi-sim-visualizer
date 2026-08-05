@@ -48,14 +48,16 @@ f = TspiFile('schemas/examples/runs/intercept-0042.tspi')
 print(f, f.events[0].kind, f.samples('blue-01')['pos'][-1])"
 ```
 
-End-to-end check of everything above: `scripts/e2e.sh`.
+End-to-end check of everything above: `scripts/e2e.sh` (bash) or `scripts/e2e.ps1`
+(PowerShell/Windows).
 
 ## Unity viewer (Unity 6000.0.x)
 
 Open `unity/TspiViewer` with Unity Hub. The shared format library arrives as local UPM
 package `com.tspi.core` (from `src/Tspi.Core` — same code the sim wrote the file with).
-Create an empty scene, add `TspiPlaybackController` (+ `PlaybackHud`) to a GameObject,
-point `filePath` at a `.tspi`, press Play: per-entity objects with team-colored trails,
+Open `Assets/Scenes/Playback.unity` and press Play — it plays the walkthrough run
+(`runs/ship-to-air.tspi`; the HUD tells you how to generate it if missing). You get
+per-entity objects with team-colored trails,
 scrubbing, pause, 0.25–16× time dilation. The viewer **never simulates** — it interpolates
 recorded samples (Hermite position, slerped attitude), so scrubbing a million-sample file
 is O(1) per entity.

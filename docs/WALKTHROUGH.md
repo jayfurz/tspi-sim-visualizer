@@ -223,4 +223,4 @@ before your edit identically, so it feels like branching the world from "now".
   the ICD's per-engagement views straight from run files (docs/ICD-NN.md).
 - **Other viewers** — the same file plays in Unity (`unity/README.md`, includes the
   graphical scenario editor) and Godot (`godot/README.md`); `scripts/e2e.sh` runs
-  this entire pipeline as one test.
+  this entire pipeline as one test (PowerShell: `scripts/e2e.ps1`).
