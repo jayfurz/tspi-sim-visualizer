@@ -9,9 +9,14 @@ the headless `tspi` CLI produces files; this project renders them.
 2. The `com.tspi.core` package resolves from `src/Tspi.Core` via a relative `file:`
    reference — the *same sources* the simulator used to write the file, so the format
    can never drift between producer and viewer.
-3. New empty scene → empty GameObject → add **TspiPlaybackController** and **PlaybackHud**.
-4. Set `filePath` to an absolute path of a `.tspi` (e.g. the output of
-   `tspi run schemas/examples/intercept.json`), press Play.
+3. Generate the walkthrough run from the repo root (docs/WALKTHROUGH.md):
+   `tspi run schemas/examples/ship-to-air.json -o runs/ship-to-air.tspi`.
+4. Open **`Assets/Scenes/Playback.unity`** and press Play. The scene ships with
+   `TspiPlaybackController` + `PlaybackHud` pre-wired and `filePath` set to
+   `runs/ship-to-air.tspi` — relative paths resolve against the repo root, and if the
+   file is missing the HUD says so and shows the command instead of a blank screen.
+   (For any other run, set `filePath` on the `TspiViewer` object: absolute, or
+   repo-root-relative.)
 
 You get: one object per entity (team-colored trails: blue/red/gray), spawn/despawn on
 launch/intercept, pause/scrub/loop and 0.25–16× time dilation from the HUD, and event

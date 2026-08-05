@@ -28,3 +28,12 @@ unity/TspiViewer/*.sln
 # Rendered doc PDFs/decks are regenerable artifacts (scripts/md2pdf.py, scripts/md2pptx.py)
 docs/*.pdf
 docs/*.pptx
+
+# Unity generated state (viewer project is source-only)
+unity/TspiViewer/[Ll]ibrary/
+unity/TspiViewer/[Tt]emp/
+unity/TspiViewer/[Ll]ogs/
+unity/TspiViewer/[Uu]serSettings/
+unity/TspiViewer/obj/
+unity/TspiViewer/*.csproj
+unity/TspiViewer/*.sln

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using Tspi.Core.IO;
 using UnityEngine;
 
@@ -14,8 +15,11 @@ namespace TspiViewer
     /// </summary>
     public sealed class TspiPlaybackController : MonoBehaviour
     {
-        [Tooltip("Absolute path to a .tspi file. On device, copy into persistentDataPath first.")]
+        [Tooltip("Path to a .tspi file: absolute, or relative to the repo root (e.g. runs/ship-to-air.tspi). On device, copy into persistentDataPath first.")]
         public string filePath = "";
+
+        /// <summary>Why the last Load produced nothing ("" when loaded); shown by PlaybackHud.</summary>
+        public string LoadError { get; private set; } = "";
 
         [Tooltip("Playback rate. 1 = real time, negative = reverse, 0 = paused.")]
         public float timeScale = 1.0f;
@@ -64,7 +68,17 @@ namespace TspiViewer
             double prevT = _timeSec;
             bool hadFile = _reader != null;
             Unload();
-            _reader = TspiReader.Open(path);
+            string resolved = ResolvePath(path);
+            if (!File.Exists(resolved))
+            {
+                LoadError = $"file not found: '{path}'";
+                Debug.LogWarning($"TspiPlaybackController: {LoadError} — generate one from the repo root, " +
+                                 "e.g. 'tspi run schemas/examples/ship-to-air.json -o runs/ship-to-air.tspi' " +
+                                 "(docs/WALKTHROUGH.md), then press Play again.");
+                return;
+            }
+            LoadError = "";
+            _reader = TspiReader.Open(resolved);
             _minT = double.MaxValue;
             _maxT = double.MinValue;
             foreach (var e in _reader.Entities)
@@ -108,6 +122,17 @@ namespace TspiViewer
             }
 
             _views.Add(new EntityView { Entry = e, Transform = go.transform, Trail = trail });
+        }
+
+        /// <summary>Absolute paths pass through; relative paths resolve against the CWD
+        /// and then the repo root (three levels above Assets/), so the committed sample
+        /// scene can reference walkthrough outputs like runs/ship-to-air.tspi.</summary>
+        public static string ResolvePath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || Path.IsPathRooted(path) || File.Exists(path))
+                return path;
+            string fromRepoRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", path));
+            return File.Exists(fromRepoRoot) ? fromRepoRoot : path;
         }
 
         private void Update()

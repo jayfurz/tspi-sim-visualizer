@@ -18,7 +18,19 @@ namespace TspiViewer
 
         private void OnGUI()
         {
-            if (!_pb.Loaded) return;
+            if (!_pb.Loaded)
+            {
+                // Make "nothing loaded" self-explanatory instead of a blank screen.
+                GUILayout.BeginArea(new Rect(12, 12, 680, 110), GUI.skin.box);
+                GUILayout.Label("TSPI viewer — no file loaded");
+                GUILayout.Label(string.IsNullOrEmpty(_pb.LoadError)
+                    ? "Set filePath on TspiPlaybackController (absolute, or relative to the repo root)."
+                    : _pb.LoadError);
+                GUILayout.Label("Generate the walkthrough run from the repo root:");
+                GUILayout.Label("    tspi run schemas/examples/ship-to-air.json -o runs/ship-to-air.tspi");
+                GUILayout.EndArea();
+                return;
+            }
             const float pad = 12f;
             float w = Screen.width - 2 * pad;
             var area = new Rect(pad, Screen.height - 108, w, 96);
