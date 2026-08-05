@@ -192,6 +192,7 @@ public static class ManifestValidator
 
         }
 
+        var munIds = new HashSet<string>(m.Munitions.Select(x => x.Id));
         foreach (var mun in m.Munitions)
         {
             string mwhere = $"munition '{mun.Id}'";
@@ -216,7 +217,9 @@ public static class ManifestValidator
             if (!parented && mun.Launch is { EjectMps: > 0 })
                 Err($"{mwhere}: eject kick applies to launched munitions only — declare the full birth velocity in initial instead");
             if (string.IsNullOrEmpty(mun.Target)) Err($"{mwhere}: target is required in v1 (pronav needs a track)");
-            else if (!entityIds.Contains(mun.Target)) Err($"{mwhere}: target '{mun.Target}' is not a declared entity");
+            else if (!entityIds.Contains(mun.Target) && !munIds.Contains(mun.Target))
+                Err($"{mwhere}: target '{mun.Target}' is not a declared entity or munition");
+            else if (mun.Target == mun.Id) Err($"{mwhere}: cannot target itself");
             else if (parented && mun.Target == mun.Parent) Err($"{mwhere}: cannot target its own parent");
             if (!models.TryResolve(mun.Model, out var mm, out _, out string mmErr))
                 Err($"{mwhere}: model '{mun.Model}': {mmErr}");
@@ -255,6 +258,24 @@ public static class ManifestValidator
                     Warn($"{mwhere}: guidance.policy is ignored for kind '{gd.Kind}'");
             }
         }
+
+        // Munition-vs-munition chains must be acyclic: the engine integrates a
+        // munition after its target so it can fly against (and kill-truncate) it.
+        var munById = m.Munitions.Where(x => !string.IsNullOrEmpty(x.Id))
+            .GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First());
+        var visitState = new Dictionary<string, int>(); // 1 = in progress, 2 = done
+        void CycleCheck(MunitionSpec x)
+        {
+            if (visitState.TryGetValue(x.Id, out int st))
+            {
+                if (st == 1) Err($"munition '{x.Id}': circular munition-vs-munition targeting chain");
+                return;
+            }
+            visitState[x.Id] = 1;
+            if (munById.TryGetValue(x.Target ?? "", out var dep) && dep != x) CycleCheck(dep);
+            visitState[x.Id] = 2;
+        }
+        foreach (var x in munById.Values) CycleCheck(x);
 
         try { ManifestJson.RenderTemplate(m.Output.TrajectoryFile, m.Name, m.Seed); }
         catch (Exception ex) { Err("output.trajectory_file: " + ex.Message); }

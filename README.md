@@ -18,8 +18,9 @@ tspi validate schemas/examples/intercept.json
 tspi run schemas/examples/intercept.json             # -> schemas/examples/runs/intercept-0042.tspi
 tspi run schemas/examples/ship-to-air.json           # ship-to-air reference engagement: VLS-style
                                                      # launch kick, SAM vs dispersed inbound
-tspi run schemas/examples/ship-defense.json          # unparented red threat: appears at t=10
-                                                     # with a declared state, dives on the ship
+tspi run schemas/examples/ship-defense.json          # unparented red threat appears at t=10 and
+                                                     # dives on the ship; the ship's SAM kills it
+                                                     # (munition-vs-munition, track truncated)
 tspi run schemas/examples/nn-intercept.json          # learned (NN) guidance: hand-rolled f64 MLP,
                                                      # weights sha-256'd into provenance
 tspi inspect schemas/examples/runs/intercept-0042.tspi --events --provenance

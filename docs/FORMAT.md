@@ -116,8 +116,9 @@ and additive evolution are worth it. Unknown keys must be ignored by readers.
 ```
 
 `src`/`dst` reference entity `ord`. Event `kind`s in v1: `launch`, `cpa`, `intercept`,
-`ground_impact`, `expire`. `miss_m` (sub-dt refined closest-approach distance) rides in
-`data`. The provenance `models` map holds the SHA-256 of every vehicle model **and
+`ground_impact`, `expire`, `killed` (src = the munition destroyed by a
+munition-vs-munition intercept, dst = its killer; the victim's block ends at the kill
+time). `miss_m` (sub-dt refined closest-approach distance) rides in `data`. The provenance `models` map holds the SHA-256 of every vehicle model **and
 guidance policy** file the run resolved — "same manifest, same seed" only pins the
 output if the weights that flew the munitions are pinned too. `environment` records the atmosphere + wind the run used and is carried forward
 across appends, so a later `tspi append` flies its munitions in the same air mass. The

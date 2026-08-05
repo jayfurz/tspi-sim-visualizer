@@ -153,6 +153,41 @@ public class ManifestTests
         Assert.Contains(r.Errors, e => e.Contains("needs a parent"));
     }
 
+    [Fact]
+    public void ValidatorChecksMunitionVsMunitionTargeting()
+    {
+        var models = new ModelLibrary(System.Array.Empty<string>());
+        models.AddInMemory("fighter", new VehicleModel { Schema = VehicleModel.SchemaId, Kind = "aircraft", MassKg = 1000 });
+        models.AddInMemory("aam", new VehicleModel { Schema = VehicleModel.SchemaId, Kind = "munition", MassKg = 100 });
+        var m = Parse<ScenarioManifest>("""
+        { "schema": "tspi-scenario/1", "name": "m",
+          "scene": { "origin_lla": {"lat_deg":0,"lon_deg":0,"alt_m":0}, "duration_s": 10, "dt_s": 0.1 },
+          "entities": [ { "id": "a", "model": "fighter",
+            "initial": { "pos_ned_m": [0,0,-1000], "vel_ned_mps": [200,0,0] } } ],
+          "munitions": [
+            { "id": "threat", "model": "aam", "target": "a",
+              "initial": { "pos_ned_m": [5000,0,-2000], "vel_ned_mps": [-100,0,0] },
+              "launch": { "when": "time", "at_s": 1 } },
+            { "id": "interceptor", "parent": "a", "model": "aam", "target": "threat",
+              "launch": { "when": "range_to_target", "less_than_m": 8000 } } ]
+        }
+        """);
+
+        // A munition may target another munition.
+        Assert.True(ManifestValidator.Validate(m, models).IsValid);
+
+        m.Munitions[1].Target = "interceptor";        // self-target
+        var r = ManifestValidator.Validate(m, models);
+        Assert.Contains(r.Errors, e => e.Contains("cannot target itself"));
+
+        m.Munitions[0].Parent = "a";                  // cycle: threat <-> interceptor
+        m.Munitions[0].Initial = null;
+        m.Munitions[0].Target = "interceptor";
+        m.Munitions[1].Target = "threat";
+        r = ManifestValidator.Validate(m, models);
+        Assert.Contains(r.Errors, e => e.Contains("circular munition-vs-munition"));
+    }
+
     [Theory]
     [InlineData("{name}-{seed:04}.tspi", "run", 42UL, "run-0042.tspi")]
     [InlineData("{name}.tspi", "x", 7UL, "x.tspi")]

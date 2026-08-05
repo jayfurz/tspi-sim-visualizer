@@ -15,8 +15,9 @@ wxyz Hamilton body->NED — docs/CONVENTIONS.md):
     target   dt_s, t0_s, t_s [N], pos_ned_m [N,3], vel_ned_mps [N,3],
              att_wxyz [N,4], omega_body_rps [N,3]      (arrays are zero-copy views)
              — windowed to the fly-out: [launch, min(terminal, launch + window_s)]
-    outcome  terminal ('intercept'|'cpa'|'ground_impact'|'expire'|None),
-             t_terminal_s, miss_m (NaN when not applicable)
+    outcome  terminal ('intercept'|'cpa'|'ground_impact'|'killed'|'expire'|None),
+             t_terminal_s, miss_m (NaN when not applicable; 'killed' = this
+             munition was intercepted by another munition mid-flight)
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from .reader import TspiFile
 
 # Event kinds that end a munition's flight, in the precedence used when a run
 # carries several for the same munition (cpa is informational next to intercept).
-_TERMINAL_KINDS = ("intercept", "ground_impact", "expire", "cpa")
+_TERMINAL_KINDS = ("intercept", "ground_impact", "killed", "expire", "cpa")
 
 
 @dataclass

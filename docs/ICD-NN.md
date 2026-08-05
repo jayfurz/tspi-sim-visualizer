@@ -60,7 +60,7 @@ same grid time):
 | Field | Type | Units | Description |
 |---|---|---|---|
 | `t_s` | f64 | s | launch time |
-| `munition_id` / `launcher_id` / `target_id` | string | | entity ids; `launcher_id` null if unparented |
+| `munition_id` / `launcher_id` / `target_id` | string | | entity ids; `launcher_id` null if unparented; `target_id` may name a munition (munition-vs-munition engagements) |
 | `pos_ned_m` | f64[3] | m | munition position |
 | `vel_ned_mps` | f64[3] | m/s | munition velocity |
 | `att_wxyz` | f64[4] | | munition attitude (body→NED) |
@@ -85,7 +85,7 @@ recorded track. Slices are zero-copy either way:
 
 | Field | Type | Description |
 |---|---|---|
-| `terminal` | string∣null | `intercept` \| `ground_impact` \| `expire` \| `cpa` (precedence in that order); null if the munition's flight has no terminal event |
+| `terminal` | string∣null | `intercept` \| `ground_impact` \| `killed` \| `expire` \| `cpa` (precedence in that order; `killed` = destroyed mid-flight by another munition); null if the munition's flight has no terminal event |
 | `t_terminal_s` | f64 | NaN when `terminal` is null |
 | `miss_m` | f64 | sub-dt refined closest approach; NaN when unavailable |
 
@@ -144,7 +144,7 @@ flyouts(k)
 │    .omega_body_rps    [N×3]     % body rates, body frame (NOT DCV — see OPEN-12)
 ├─ .target                        % same fields as .munition, same time window
 └─ .outcome
-     .terminal                    % 'intercept' | 'ground_impact' | 'expire' | 'cpa' | none
+     .terminal                    % 'intercept' | 'ground_impact' | 'killed' | 'expire' | 'cpa' | none
      .t_terminal_s  .miss_m       % when, and refined closest approach (NaN if n/a)
 ```
 

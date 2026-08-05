@@ -34,6 +34,14 @@
       "initial": { "pos_ned_m": [1800, 400, -6000], "vel_ned_mps": [-86, -19, 287] },
       "launch": { "when": "time", "at_s": 10.0 },
       "guidance": { "kind": "pronav", "gain": 4.5 }
+    },
+    {
+      "id": "ship-01-sam-1",
+      "parent": "ship-01",
+      "model": "generic-sam",
+      "target": "red-asm-1",
+      "launch": { "when": "range_to_target", "less_than_m": 10000, "eject_mps": 35, "elevation_deg": 75 },
+      "guidance": { "kind": "pronav", "gain": 4.0 }
     }
   ]
 }

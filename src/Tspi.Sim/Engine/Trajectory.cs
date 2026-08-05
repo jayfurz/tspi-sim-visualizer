@@ -36,6 +36,20 @@ public sealed class Trajectory
         if (omegaBody is { } w) OmegaBody.Add(w);
     }
 
+    /// <summary>Drop samples after tSec — kill removal: the victim of a munition-vs-
+    /// munition intercept stops existing at the kill time. Keeps at least one sample.</summary>
+    public void TruncateAfter(double tSec)
+    {
+        int keep = (int)System.Math.Floor((tSec - T0Sec) / DtSec + 1e-9) + 1;
+        if (keep < 1) keep = 1;
+        int n = Count;
+        if (keep >= n) return;
+        Pos.RemoveRange(keep, n - keep);
+        Vel.RemoveRange(keep, n - keep);
+        Att.RemoveRange(keep, n - keep);
+        if (OmegaBody.Count == n) OmegaBody.RemoveRange(keep, n - keep);
+    }
+
     /// <summary>Hermite-interpolated pos/vel at tSec (clamped to the trajectory span).</summary>
     public MotionState SampleAt(double tSec)
     {

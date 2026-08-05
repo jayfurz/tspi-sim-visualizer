@@ -80,6 +80,45 @@ public class PhysicsVandVTests
     }
 
     [Fact]
+    public void MunitionKillTruncatesTheVictim()
+    {
+        // Interceptor A vs ballistic munition B: on intercept, B's track must end at
+        // the kill time, its later events (here: expire) vanish, and `killed`
+        // records victim -> killer.
+        var m = Scenario(15, 0.01);
+        m.Entities.Add(new EntitySpec
+        {
+            Id = "decoy", Team = "gray", Type = "aircraft", Model = "fighter",
+            Initial = new InitialState { PosNedM = new[] { 0.0, 0, -9000 }, VelNedMps = new[] { 100.0, 0, 0 } },
+        });
+        m.Munitions.Add(new MunitionSpec
+        {
+            Id = "B", Team = "red", Model = "ballistic", Target = "decoy",
+            Initial = new InitialState { PosNedM = new[] { 2000.0, 0, -1000 }, VelNedMps = new[] { -50.0, 0, 0 } },
+            Launch = new LaunchAtTime { AtS = 1.0 },
+            Guidance = new GuidanceSpec { Kind = "ballistic" },
+        });
+        m.Munitions.Add(new MunitionSpec
+        {
+            Id = "A", Team = "blue", Model = "ballistic", Target = "B",
+            Initial = new InitialState { PosNedM = new[] { 0.0, 0, -1000 }, VelNedMps = new[] { 200.0, 0, 0 } },
+            Launch = new LaunchAtTime { AtS = 1.0 },
+            Guidance = new GuidanceSpec { Kind = "pronav", Gain = 5 },
+        });
+        var result = SceneEngine.RunScenario(m, ModelsBuilt());
+
+        var killed = result.Events.Single(ev => ev.Kind == "killed");
+        var hit = result.Events.Single(ev => ev.Kind == "intercept");
+        Assert.Equal(hit.TNs, killed.TNs);
+        var b = result.Entities.First(e => e.Id == "B");
+        Assert.Equal("B", result.OrdToId[killed.SrcOrd!.Value]); // src = victim
+        Assert.Equal("A", result.OrdToId[killed.DstOrd!.Value]); // dst = killer
+        // Victim truncated at the kill; no events for B after it.
+        Assert.True(b.Traj.EndSec <= killed.TNs / 1e9 + m.Scene.DtS + 1e-9);
+        Assert.DoesNotContain(result.Events, ev => ev.SrcOrd == killed.SrcOrd && ev.TNs > killed.TNs);
+    }
+
+    [Fact]
     public void StraightAndLevelMatchesConstantVelocity()
     {
         var m = Scenario(20, 0.01);

@@ -152,7 +152,10 @@ public static class SceneEngine
         }
 
         var entityById = m.Entities.ToDictionary(e => e.Id);
-        foreach (var mun in m.Munitions)
+        var munTrajById = new Dictionary<string, Trajectory>();
+        var munOrdById = new Dictionary<string, uint>();
+        var munProduced = new List<Produced>();
+        foreach (var mun in OrderByTargetDependency(m.Munitions))
         {
             if (mun.Launch == null) continue; // carried, never employed
             bool parented = !string.IsNullOrEmpty(mun.Parent);
@@ -166,7 +169,22 @@ public static class SceneEngine
                     Pos = new Vec3d(mun.Initial!.PosNedM[0], mun.Initial.PosNedM[1], mun.Initial.PosNedM[2]),
                     Vel = new Vec3d(mun.Initial.VelNedMps[0], mun.Initial.VelNedMps[1], mun.Initial.VelNedMps[2]),
                 }, 0.0, m.Scene.DurationS);
-            var targetTrack = new MemTargetTrack(aircraftTracks[mun.Target]);
+            // Targets may be platforms or earlier-integrated munitions (partial tracks:
+            // launch conditions and fly-outs clamp to the target's alive window).
+            ITargetTrack targetTrack;
+            uint targetOrd;
+            if (aircraftTracks.TryGetValue(mun.Target, out var platformTraj))
+            {
+                targetTrack = new MemTargetTrack(platformTraj);
+                targetOrd = aircraftOrd[mun.Target];
+            }
+            else if (munTrajById.TryGetValue(mun.Target, out var targetMunTraj))
+            {
+                targetTrack = new MemTargetTrack(targetMunTraj);
+                targetOrd = munOrdById[mun.Target];
+            }
+            else continue; // target munition never launched: nothing to engage
+
             double? launchT = ResolveLaunchTime(mun.Launch, parentTrack, targetTrack, dt, 0.0, m.Scene.DurationS);
             if (launchT == null) continue; // condition never met within the scenario
 
@@ -176,10 +194,12 @@ public static class SceneEngine
                 Spec = mun, Model = mmodel!, Models = models, Environment = env,
                 Seed = m.Seed, DtSec = dt, LaunchSec = launchT.Value,
                 ParentTrack = parentTrack, TargetTrack = targetTrack,
-                Ord = ord, TargetOrd = aircraftOrd[mun.Target],
+                Ord = ord, TargetOrd = targetOrd,
                 OriginAltM = m.Scene.OriginLla.AltM, DurationS = m.Scene.DurationS,
             });
-            yield return new Produced
+            munTrajById[mun.Id] = traj;
+            munOrdById[mun.Id] = ord;
+            munProduced.Add(new Produced
             {
                 Id = mun.Id,
                 Team = !string.IsNullOrEmpty(mun.Team) ? mun.Team!
@@ -187,8 +207,57 @@ public static class SceneEngine
                 Type = "munition", Model = mun.Model, Ord = ord,
                 ParentOrd = parented ? aircraftOrd[mun.Parent] : (uint?)null,
                 Traj = traj, Events = events,
-            };
+            });
+
+            // Kill removal: an intercept against a munition ends the victim at the
+            // refined intercept time — its track truncates, its later events (the
+            // strike it would have made) are dropped, and `killed` is recorded
+            // (src = victim, dst = killer). Later munitions integrate against the
+            // truncated track. Yields are deferred until all munitions resolve so
+            // the streaming writer never flushes a block that a kill would edit.
+            if (munOrdById.ContainsKey(mun.Target)
+                && events.FirstOrDefault(ev => ev.Kind == "intercept") is { } hit)
+            {
+                munTrajById[mun.Target].TruncateAfter(hit.TNs / 1e9);
+                var victim = munProduced.First(p => p.Id == mun.Target);
+                victim.Events.RemoveAll(ev => ev.TNs > hit.TNs);
+                victim.Events.Add(new TspiEventEntry
+                {
+                    TNs = hit.TNs, Kind = "killed",
+                    SrcOrd = munOrdById[mun.Target], DstOrd = ord,
+                });
+            }
         }
+        foreach (var p in munProduced)
+            yield return p;
+    }
+
+    /// <summary>Stable dependency order: a munition targeting another munition
+    /// integrates after its target, so it flies against the target's final —
+    /// possibly kill-truncated — track. Manifest order is preserved otherwise;
+    /// the validator rejects targeting cycles.</summary>
+    private static List<MunitionSpec> OrderByTargetDependency(List<MunitionSpec> muns)
+    {
+        var byId = muns.Where(x => !string.IsNullOrEmpty(x.Id))
+            .GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First());
+        var ordered = new List<MunitionSpec>();
+        var state = new Dictionary<string, int>(); // 1 = in progress, 2 = done
+        void Visit(MunitionSpec x)
+        {
+            if (state.TryGetValue(x.Id, out int s) && s != 0) return;
+            state[x.Id] = 1;
+            if (byId.TryGetValue(x.Target ?? "", out var dep) && !ReferenceEquals(dep, x)) Visit(dep);
+            state[x.Id] = 2;
+            ordered.Add(x);
+        }
+        foreach (var x in muns)
+        {
+            // Blank/duplicate ids are validation errors; keep them in place here so
+            // every element is produced exactly once even on an invalid manifest.
+            if (string.IsNullOrEmpty(x.Id) || !ReferenceEquals(byId[x.Id], x)) ordered.Add(x);
+            else Visit(x);
+        }
+        return ordered;
     }
 
     /// <summary>

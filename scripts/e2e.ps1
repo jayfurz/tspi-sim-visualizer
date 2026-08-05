@@ -34,9 +34,10 @@ try {
     $out = tspi run schemas/examples/ship-to-air.json -o "$Work/ship.tspi"
     Assert ([bool]($out | Select-String "intercept|cpa")) "ship-to-air produced no endgame event"
 
-    Step "unparented red threat (appears at t=10, dives on the ship)"
+    Step "ship defense: unparented red threat appears, blue SAM kills it"
     $out = tspi run schemas/examples/ship-defense.json -o "$Work/defense.tspi"
-    Assert ([bool]($out | Select-String "intercept")) "unparented threat did not strike the ship"
+    Assert ([bool]($out | Select-String "intercept")) "SAM did not intercept the threat"
+    Assert ([bool]($out | Select-String "killed")) "no killed event for the intercepted threat"
 
     Step "run intercept scenario"
     tspi run schemas/examples/intercept.json -o "$Work/run.tspi"
