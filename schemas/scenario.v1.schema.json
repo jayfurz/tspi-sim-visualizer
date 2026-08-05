@@ -213,10 +213,21 @@
     "munition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "parent", "model", "target"],
+      "required": ["id", "model", "target"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "parent": { "type": "string", "minLength": 1, "description": "Launching platform's entity id" },
+        "parent": { "type": "string", "minLength": 1, "description": "Launching platform's entity id. Absent = unparented: the munition appears at 'initial' when its time launch fires (declare exactly one of parent/initial)" },
+        "initial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pos_ned_m", "vel_ned_mps"],
+          "properties": {
+            "pos_ned_m": { "$ref": "#/$defs/vec3" },
+            "vel_ned_mps": { "$ref": "#/$defs/vec3" }
+          },
+          "description": "Birth state for unparented munitions (mutually exclusive with parent)"
+        },
+        "team": { "type": "string", "description": "Defaults to the parent's team, or 'gray' when unparented" },
         "model": { "type": "string", "minLength": 1 },
         "target": { "type": "string", "minLength": 1 },
         "launch": {

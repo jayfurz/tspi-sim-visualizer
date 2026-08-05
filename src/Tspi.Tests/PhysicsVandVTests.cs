@@ -48,6 +48,38 @@ public class PhysicsVandVTests
     }
 
     [Fact]
+    public void UnparentedMunitionAppearsAtDeclaredState()
+    {
+        // A red threat with no launcher: born at its declared state when the time
+        // launch fires, unparented in the output, team from its own spec.
+        var m = Scenario(10, 0.01);
+        m.Entities.Add(new EntitySpec
+        {
+            Id = "tgt", Team = "blue", Type = "aircraft", Model = "fighter",
+            Initial = new InitialState { PosNedM = new[] { 0.0, 0, -6000 }, VelNedMps = new[] { 200.0, 0, 0 } },
+        });
+        m.Munitions.Add(new MunitionSpec
+        {
+            Id = "pop", Team = "red", Model = "ballistic", Target = "tgt",
+            Initial = new InitialState { PosNedM = new[] { 1000.0, 500, -2000 }, VelNedMps = new[] { 50.0, -10, 0 } },
+            Launch = new LaunchAtTime { AtS = 2.0 },
+            Guidance = new GuidanceSpec { Kind = "ballistic" },
+        });
+        var result = SceneEngine.RunScenario(m, ModelsBuilt());
+
+        var pop = result.Entities.First(e => e.Id == "pop");
+        Assert.Equal(2.0, pop.Traj.T0Sec, 9);
+        Assert.Null(pop.ParentOrd);
+        Assert.Equal("red", pop.Team);
+        Assert.Equal(1000.0, pop.Traj.Pos[0].X, 9);
+        Assert.Equal(500.0, pop.Traj.Pos[0].Y, 9);
+        Assert.Equal(-2000.0, pop.Traj.Pos[0].Z, 9);
+        Assert.Equal(50.0, pop.Traj.Vel[0].X, 9);
+        var launch = result.Events.Single(ev => ev.Kind == "launch");
+        Assert.Equal(2.0, launch.TNs / 1e9, 9);
+    }
+
+    [Fact]
     public void StraightAndLevelMatchesConstantVelocity()
     {
         var m = Scenario(20, 0.01);

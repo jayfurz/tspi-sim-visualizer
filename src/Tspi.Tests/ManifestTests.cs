@@ -117,6 +117,42 @@ public class ManifestTests
         Assert.Contains(r.Errors, e => e.Contains("expected 'munition'"));
     }
 
+    [Fact]
+    public void ValidatorChecksUnparentedMunitions()
+    {
+        var models = new ModelLibrary(System.Array.Empty<string>());
+        models.AddInMemory("fighter", new VehicleModel { Schema = VehicleModel.SchemaId, Kind = "aircraft", MassKg = 1000 });
+        models.AddInMemory("aam", new VehicleModel { Schema = VehicleModel.SchemaId, Kind = "munition", MassKg = 100 });
+        var m = Parse<ScenarioManifest>("""
+        { "schema": "tspi-scenario/1", "name": "m",
+          "scene": { "origin_lla": {"lat_deg":0,"lon_deg":0,"alt_m":0}, "duration_s": 10, "dt_s": 0.1 },
+          "entities": [ { "id": "a", "model": "fighter",
+            "initial": { "pos_ned_m": [0,0,-1000], "vel_ned_mps": [200,0,0] } } ],
+          "munitions": [
+            { "id": "m1", "model": "aam", "target": "a",
+              "initial": { "pos_ned_m": [5000,0,-2000], "vel_ned_mps": [-100,0,0] },
+              "launch": { "when": "range_to_target", "less_than_m": 1000, "eject_mps": 5 } } ]
+        }
+        """);
+
+        // Unparented: range launches and eject kicks are both rejected.
+        var r = ManifestValidator.Validate(m, models);
+        Assert.Contains(r.Errors, e => e.Contains("time launch"));
+        Assert.Contains(r.Errors, e => e.Contains("eject kick"));
+
+        m.Munitions[0].Launch = new LaunchAtTime { AtS = 1 };
+        Assert.True(ManifestValidator.Validate(m, models).IsValid);
+
+        m.Munitions[0].Parent = "a";                  // both parent and initial
+        r = ManifestValidator.Validate(m, models);
+        Assert.Contains(r.Errors, e => e.Contains("mutually exclusive"));
+
+        m.Munitions[0].Parent = "";                   // neither
+        m.Munitions[0].Initial = null;
+        r = ManifestValidator.Validate(m, models);
+        Assert.Contains(r.Errors, e => e.Contains("needs a parent"));
+    }
+
     [Theory]
     [InlineData("{name}-{seed:04}.tspi", "run", 42UL, "run-0042.tspi")]
     [InlineData("{name}.tspi", "x", 7UL, "x.tspi")]

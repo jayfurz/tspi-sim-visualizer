@@ -195,13 +195,29 @@ public static class ManifestValidator
         foreach (var mun in m.Munitions)
         {
             string mwhere = $"munition '{mun.Id}'";
+            bool parented = !string.IsNullOrEmpty(mun.Parent);
             if (string.IsNullOrEmpty(mun.Id)) Err("every munition needs a non-empty id");
             else if (!ids.Add(mun.Id)) Err($"duplicate id '{mun.Id}'");
-            if (string.IsNullOrEmpty(mun.Parent)) Err($"{mwhere}: parent (launching entity id) is required");
-            else if (!entityIds.Contains(mun.Parent)) Err($"{mwhere}: parent '{mun.Parent}' is not a declared entity");
+            if (parented && mun.Initial != null)
+                Err($"{mwhere}: parent and initial are mutually exclusive (inherited vs declared birth state)");
+            if (!parented && mun.Initial == null)
+                Err($"{mwhere}: needs a parent (launched) or an initial state (unparented, appears at its launch time)");
+            if (parented && !entityIds.Contains(mun.Parent))
+                Err($"{mwhere}: parent '{mun.Parent}' is not a declared entity");
+            if (!parented && mun.Initial is { } init)
+            {
+                if (init.PosNedM.Length != 3) Err($"{mwhere}: initial.pos_ned_m must have 3 components");
+                if (init.VelNedMps.Length != 3) Err($"{mwhere}: initial.vel_ned_mps must have 3 components");
+                if (init.AttYprDeg != null)
+                    Warn($"{mwhere}: initial.att_ypr_deg is ignored (munition attitude is velocity-aligned)");
+            }
+            if (!parented && mun.Launch is not (null or LaunchAtTime))
+                Err($"{mwhere}: unparented munitions need a time launch (range_to_target has no launcher to measure from)");
+            if (!parented && mun.Launch is { EjectMps: > 0 })
+                Err($"{mwhere}: eject kick applies to launched munitions only — declare the full birth velocity in initial instead");
             if (string.IsNullOrEmpty(mun.Target)) Err($"{mwhere}: target is required in v1 (pronav needs a track)");
             else if (!entityIds.Contains(mun.Target)) Err($"{mwhere}: target '{mun.Target}' is not a declared entity");
-            else if (mun.Target == mun.Parent) Err($"{mwhere}: cannot target its own parent");
+            else if (parented && mun.Target == mun.Parent) Err($"{mwhere}: cannot target its own parent");
             if (!models.TryResolve(mun.Model, out var mm, out _, out string mmErr))
                 Err($"{mwhere}: model '{mun.Model}': {mmErr}");
             else if (mm!.Kind != "munition")

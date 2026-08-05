@@ -145,8 +145,14 @@ public sealed class SpeedSet : SpeedCmd
 public sealed class MunitionSpec
 {
     public string Id { get; set; } = "";
-    /// <summary>Launching platform's entity id.</summary>
+    /// <summary>Launching platform's entity id. Absent = unparented: the munition
+    /// appears at `initial` when its (time) launch condition fires.</summary>
     public string Parent { get; set; } = "";
+    /// <summary>Declared birth state for unparented munitions; mutually exclusive
+    /// with parent (parented munitions inherit the launcher's state).</summary>
+    public InitialState? Initial { get; set; }
+    /// <summary>Team override; defaults to the parent's team, or "gray" when unparented.</summary>
+    public string? Team { get; set; }
     public string Model { get; set; } = "";
     /// <summary>Target entity id. Required in v1 (pronav needs a track).</summary>
     public string Target { get; set; } = "";

@@ -1,0 +1,39 @@
+{
+  "schema": "tspi-scenario/1",
+  "name": "ship-defense",
+  "seed": 42,
+  "scene": {
+    "origin_lla": { "lat_deg": 33.9425, "lon_deg": -119.4622, "alt_m": 0.0 },
+    "epoch": "2026-07-11T19:00:00Z",
+    "duration_s": 90.0,
+    "dt_s": 0.01,
+    "environment": { "atmosphere": "exp8500" }
+  },
+  "output": { "trajectory_file": "runs/{name}-{seed:04}.tspi" },
+  "entities": [
+    {
+      "id": "ship-01",
+      "team": "blue",
+      "type": "ship",
+      "model": "generic-ship",
+      "initial": {
+        "pos_ned_m": [0, 0, 0],
+        "vel_ned_mps": [8, 0, 0]
+      },
+      "maneuvers": [
+        { "at_s": 30.0, "lateral": { "kind": "turn_to_heading", "heading_deg": 320, "g_limit": 0.2 } }
+      ]
+    }
+  ],
+  "munitions": [
+    {
+      "id": "red-asm-1",
+      "team": "red",
+      "model": "generic-asm",
+      "target": "ship-01",
+      "initial": { "pos_ned_m": [1800, 400, -6000], "vel_ned_mps": [-86, -19, 287] },
+      "launch": { "when": "time", "at_s": 10.0 },
+      "guidance": { "kind": "pronav", "gain": 4.5 }
+    }
+  ]
+}

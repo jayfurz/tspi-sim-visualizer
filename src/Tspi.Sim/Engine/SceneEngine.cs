@@ -155,8 +155,17 @@ public static class SceneEngine
         foreach (var mun in m.Munitions)
         {
             if (mun.Launch == null) continue; // carried, never employed
+            bool parented = !string.IsNullOrEmpty(mun.Parent);
             models.TryResolve(mun.Model, out var mmodel, out _, out _);
-            var parentTrack = new MemTargetTrack(aircraftTracks[mun.Parent]);
+            // Unparented munitions "launch" from their declared birth state: a constant
+            // track stands in for the launcher, so the fly-out model is unchanged.
+            ITargetTrack parentTrack = parented
+                ? new MemTargetTrack(aircraftTracks[mun.Parent])
+                : new FixedStateTrack(new MotionState
+                {
+                    Pos = new Vec3d(mun.Initial!.PosNedM[0], mun.Initial.PosNedM[1], mun.Initial.PosNedM[2]),
+                    Vel = new Vec3d(mun.Initial.VelNedMps[0], mun.Initial.VelNedMps[1], mun.Initial.VelNedMps[2]),
+                }, 0.0, m.Scene.DurationS);
             var targetTrack = new MemTargetTrack(aircraftTracks[mun.Target]);
             double? launchT = ResolveLaunchTime(mun.Launch, parentTrack, targetTrack, dt, 0.0, m.Scene.DurationS);
             if (launchT == null) continue; // condition never met within the scenario
@@ -172,8 +181,12 @@ public static class SceneEngine
             });
             yield return new Produced
             {
-                Id = mun.Id, Team = entityById[mun.Parent].Team, Type = "munition", Model = mun.Model, Ord = ord,
-                ParentOrd = aircraftOrd[mun.Parent], Traj = traj, Events = events,
+                Id = mun.Id,
+                Team = !string.IsNullOrEmpty(mun.Team) ? mun.Team!
+                    : parented ? entityById[mun.Parent].Team : "gray",
+                Type = "munition", Model = mun.Model, Ord = ord,
+                ParentOrd = parented ? aircraftOrd[mun.Parent] : (uint?)null,
+                Traj = traj, Events = events,
             };
         }
     }

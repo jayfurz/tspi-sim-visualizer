@@ -19,9 +19,13 @@ $TSPI validate schemas/examples/intercept.json
 $TSPI validate schemas/examples/all-maneuvers.json
 $TSPI validate schemas/examples/nn-intercept.json
 $TSPI validate schemas/examples/ship-to-air.json
+$TSPI validate schemas/examples/ship-defense.json
 
 step "ship-to-air reference engagement (VLS launch kick)"
 $TSPI run schemas/examples/ship-to-air.json -o "$WORK/ship.tspi" | grep -E "intercept|cpa"
+
+step "unparented red threat (appears at t=10, dives on the ship)"
+$TSPI run schemas/examples/ship-defense.json -o "$WORK/defense.tspi" | grep -E "intercept"
 
 step "run intercept scenario"
 $TSPI run schemas/examples/intercept.json -o "$WORK/run.tspi"

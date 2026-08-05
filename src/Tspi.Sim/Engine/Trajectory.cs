@@ -154,6 +154,23 @@ public sealed class MemTargetTrack : ITargetTrack
     public double EndSec => _t.EndSec;
 }
 
+/// <summary>Constant-state "track" for unparented munitions: the declared birth state
+/// stands in for a launcher over the whole scenario window, so the fly-out model
+/// needs no special case.</summary>
+public sealed class FixedStateTrack : ITargetTrack
+{
+    private readonly MotionState _state;
+    public FixedStateTrack(MotionState state, double startSec, double endSec)
+    {
+        _state = state;
+        StartSec = startSec;
+        EndSec = endSec;
+    }
+    public double StartSec { get; }
+    public double EndSec { get; }
+    public MotionState SampleAt(double tSec) => _state;
+}
+
 /// <summary>Target track backed by a recorded entity in a .tspi (the append path).</summary>
 public sealed class ReaderTargetTrack : ITargetTrack
 {

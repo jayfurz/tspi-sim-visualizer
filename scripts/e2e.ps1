@@ -28,10 +28,15 @@ try {
     tspi validate schemas/examples/all-maneuvers.json
     tspi validate schemas/examples/nn-intercept.json
     tspi validate schemas/examples/ship-to-air.json
+    tspi validate schemas/examples/ship-defense.json
 
     Step "ship-to-air reference engagement (VLS launch kick)"
     $out = tspi run schemas/examples/ship-to-air.json -o "$Work/ship.tspi"
     Assert ([bool]($out | Select-String "intercept|cpa")) "ship-to-air produced no endgame event"
+
+    Step "unparented red threat (appears at t=10, dives on the ship)"
+    $out = tspi run schemas/examples/ship-defense.json -o "$Work/defense.tspi"
+    Assert ([bool]($out | Select-String "intercept")) "unparented threat did not strike the ship"
 
     Step "run intercept scenario"
     tspi run schemas/examples/intercept.json -o "$Work/run.tspi"
