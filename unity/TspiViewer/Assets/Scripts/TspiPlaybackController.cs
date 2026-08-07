@@ -33,8 +33,10 @@ namespace TspiViewer
         public float trailSeconds = 8f;
         [Tooltip("Draw each entity's entire recorded trajectory as a dim line, like the web and Godot viewers.")]
         public bool showFullPaths = true;
-        [Tooltip("Decimation cap per entity for the full-path line; the whole trajectory is still spanned.")]
-        public int maxPathPoints = 2048;
+        [Tooltip("Vertex cap per full-path line. Generous enough that realistic runs render " +
+                 "every sample; it exists only so a pathological file (hours at high rate) " +
+                 "can't create a multi-million-vertex LineRenderer.")]
+        public int maxPathPoints = 16384;
 
         private TspiReader _reader;
         private double _timeSec;
