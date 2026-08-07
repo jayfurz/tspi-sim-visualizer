@@ -31,6 +31,10 @@ namespace TspiViewer
         public GameObject redPrefab;
         public GameObject neutralPrefab;
         public float trailSeconds = 8f;
+        [Tooltip("Draw each entity's entire recorded trajectory as a dim line, like the web and Godot viewers.")]
+        public bool showFullPaths = true;
+        [Tooltip("Decimation cap per entity for the full-path line; the whole trajectory is still spanned.")]
+        public int maxPathPoints = 2048;
 
         private TspiReader _reader;
         private double _timeSec;
@@ -42,6 +46,10 @@ namespace TspiViewer
         public double MaxTime => _maxT;
         public bool Loaded => _reader != null;
         public IReadOnlyList<EntityView> Views => _views;
+        /// <summary>The open reader (null when nothing is loaded). Every sample of every
+        /// entity is reachable through it — ReadSample(entity, i) is O(1) on the mmap —
+        /// so overlays/analytics scripts are not limited to the current playback time.</summary>
+        public TspiReader Reader => _reader;
         private static readonly List<TspiEventEntry> NoEvents = new();
         /// <summary>Footer event log of the loaded file (launch/cpa/intercept/...), for HUD timelines.</summary>
         public IReadOnlyList<TspiEventEntry> Events => _reader != null ? _reader.Events : NoEvents;
@@ -53,6 +61,7 @@ namespace TspiViewer
             public TspiEntityEntry Entry;
             public Transform Transform;
             public TrailRenderer Trail;
+            public LineRenderer Path;
         }
 
         private void OnEnable()
@@ -106,6 +115,7 @@ namespace TspiViewer
             go.name = $"{e.Id} ({e.Team}/{e.Type})";
             go.transform.SetParent(transform, false);
 
+            Color c = TeamColor(e.Team);
             var trail = go.GetComponent<TrailRenderer>();
             if (trail == null && trailSeconds > 0f)
             {
@@ -114,14 +124,49 @@ namespace TspiViewer
                 trail.startWidth = e.Type == "munition" ? 3f : 8f;
                 trail.endWidth = 0f;
                 trail.material = new Material(Shader.Find("Sprites/Default"));
-                Color c = e.Team == "blue" ? new Color(0.3f, 0.6f, 1f)
-                        : e.Team == "red" ? new Color(1f, 0.35f, 0.3f)
-                        : Color.gray;
                 trail.startColor = c;
                 trail.endColor = new Color(c.r, c.g, c.b, 0f);
             }
 
-            _views.Add(new EntityView { Entry = e, Transform = go.transform, Trail = trail });
+            LineRenderer path = showFullPaths ? CreateFullPath(e, c) : null;
+
+            _views.Add(new EntityView { Entry = e, Transform = go.transform, Trail = trail, Path = path });
+        }
+
+        private static Color TeamColor(string team) => team switch
+        {
+            "blue" => new Color(0.3f, 0.6f, 1f),
+            "red" => new Color(1f, 0.35f, 0.3f),
+            _ => Color.gray,
+        };
+
+        /// <summary>Dim polyline of the entity's entire recorded trajectory, built once at
+        /// load from the sample block (decimated to maxPathPoints, endpoints kept), so the
+        /// whole engagement geometry is visible at any playback time — parity with the web
+        /// and Godot viewers' full-path rendering.</summary>
+        private LineRenderer CreateFullPath(TspiEntityEntry e, Color teamColor)
+        {
+            if (e.SampleCount < 2 || e.Layout != TspiFormat.LayoutSixDofV1 || maxPathPoints < 2)
+                return null;
+            var go = new GameObject($"{e.Id} path");
+            go.transform.SetParent(transform, false);
+            long step = System.Math.Max(1, (e.SampleCount + maxPathPoints - 1) / maxPathPoints);
+            var pts = new List<Vector3>();
+            for (long i = 0; i < e.SampleCount; i += step)
+                pts.Add(NedUnity.ToUnityPos(_reader.ReadSample(e, i).Pos));
+            if ((e.SampleCount - 1) % step != 0)
+                pts.Add(NedUnity.ToUnityPos(_reader.ReadSample(e, e.SampleCount - 1).Pos));
+
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.positionCount = pts.Count;
+            lr.SetPositions(pts.ToArray());
+            lr.startWidth = lr.endWidth = 2f;
+            lr.material = new Material(Shader.Find("Sprites/Default"));
+            Color dim = new Color(teamColor.r, teamColor.g, teamColor.b, 0.22f);
+            lr.startColor = dim;
+            lr.endColor = dim;
+            return lr;
         }
 
         /// <summary>Absolute paths pass through; relative paths resolve against the CWD
@@ -185,7 +230,10 @@ namespace TspiViewer
         public void Unload()
         {
             foreach (var v in _views)
+            {
                 if (v.Transform != null) Destroy(v.Transform.gameObject);
+                if (v.Path != null) Destroy(v.Path.gameObject);
+            }
             _views.Clear();
             _reader?.Dispose();
             _reader = null;

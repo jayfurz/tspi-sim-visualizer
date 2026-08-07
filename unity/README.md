@@ -18,10 +18,15 @@ the headless `tspi` CLI produces files; this project renders them.
    (For any other run, set `filePath` on the `TspiViewer` object: absolute, or
    repo-root-relative.)
 
-You get: one object per entity (team-colored trails: blue/red/gray), spawn/despawn on
-launch/intercept, pause/scrub/loop and 0.25–16× time dilation from the HUD, and event
-ticks (launch/CPA/intercept) on the scrub bar. Scrubbing is O(1) per entity — pos/vel
-Hermite + attitude slerp over the mmap, courtesy of `TspiReader.TrySampleAt`.
+You get: one object per entity (team-colored trails: blue/red/gray), a dim full-recorded
+path per entity so the whole engagement geometry is visible at any playback time (parity
+with the web/Godot viewers; toggle `showFullPaths`, decimated to `maxPathPoints`),
+spawn/despawn on launch/intercept, pause/scrub/loop and 0.25–16× time dilation from the
+HUD, and event ticks (launch/CPA/intercept) on the scrub bar. Scrubbing is O(1) per
+entity — pos/vel Hermite + attitude slerp over the mmap, courtesy of
+`TspiReader.TrySampleAt`. The controller also exposes the open `TspiReader` (`Reader`),
+whose `ReadSample(entity, i)` is an O(1) mmap read — overlay/analytics scripts can walk
+every sample of every entity, not just the current playback pose.
 
 ## Scenario editing (edit → run → scrub)
 
