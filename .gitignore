@@ -17,23 +17,17 @@ dist/
 .pytest_cache/
 
 # Unity (generated on open; only Assets/Packages/ProjectSettings are source)
-unity/TspiViewer/Library/
-unity/TspiViewer/Temp/
-unity/TspiViewer/Logs/
-unity/TspiViewer/UserSettings/
+unity/TspiViewer/[Ll]ibrary/
+unity/TspiViewer/[Tt]emp/
+unity/TspiViewer/[Ll]ogs/
+unity/TspiViewer/[Uu]serSettings/
+unity/TspiViewer/[Bb]uild/
+unity/TspiViewer/[Bb]uilds/
 unity/TspiViewer/obj/
+unity/TspiViewer/.vs/
 unity/TspiViewer/*.csproj
 unity/TspiViewer/*.sln
 
 # Rendered doc PDFs/decks are regenerable artifacts (scripts/md2pdf.py, scripts/md2pptx.py)
 docs/*.pdf
 docs/*.pptx
-
-# Unity generated state (viewer project is source-only)
-unity/TspiViewer/[Ll]ibrary/
-unity/TspiViewer/[Tt]emp/
-unity/TspiViewer/[Ll]ogs/
-unity/TspiViewer/[Uu]serSettings/
-unity/TspiViewer/obj/
-unity/TspiViewer/*.csproj
-unity/TspiViewer/*.sln

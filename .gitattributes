@@ -1,0 +1,41 @@
+# Git LFS routing for Unity binary assets. Inert until matching files are added;
+# requires git-lfs on each clone (git lfs install) before the first asset import.
+# Scoped to the Unity project so docs/schemas/goldens elsewhere stay plain git.
+# Unity .asset/.unity/.prefab files stay text — they are YAML under force-text
+# serialization and diff/merge like source.
+
+# Textures & images
+unity/TspiViewer/Assets/**/*.png filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.tga filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.psd filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.tif filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.tiff filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.exr filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.hdr filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.gif filter=lfs diff=lfs merge=lfs -text
+
+# Models
+unity/TspiViewer/Assets/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.obj filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.blend filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.glb filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.gltf filter=lfs diff=lfs merge=lfs -text
+
+# Audio & video
+unity/TspiViewer/Assets/**/*.wav filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.ogg filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Fonts
+unity/TspiViewer/Assets/**/*.ttf filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.otf filter=lfs diff=lfs merge=lfs -text
+
+# Native plugins & packed bundles
+unity/TspiViewer/Assets/**/*.dll filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.so filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.dylib filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.a filter=lfs diff=lfs merge=lfs -text
+unity/TspiViewer/Assets/**/*.unitypackage filter=lfs diff=lfs merge=lfs -text
