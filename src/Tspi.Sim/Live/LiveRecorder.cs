@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Tspi.Core.IO;
+using Tspi.Core.Live;
 
 namespace Tspi.Sim.Live;
 
@@ -356,29 +357,18 @@ public static class LiveRecorder
                 return;
             }
 
-            long index = (long)wireIndex - s.IndexOffset;
-            if (index < s.Count) return;                 // duplicate or stale: the file keeps the first
-            if (index > s.Count)
+            // Duplicate/stale/gap/late-join bookkeeping is LiveIndexTracker's, shared with
+            // the viewer-side LiveTspiSource so the two consumers cannot drift apart.
+            long t0 = s.Meta.T0Ns;
+            if (!s.Index.Accept(wireIndex, (long)_header!.DtNs, ref t0, out long padCount)) return;
+            s.Meta.T0Ns = t0;
+            for (long k = 0; k < padCount; k++)
             {
-                if (s.Count == 0)
-                {
-                    // Joining a run in progress: rebase storage to this record and move t0
-                    // to the record's true time, so samples keep their real sim timestamps.
-                    s.IndexOffset += index;
-                    s.Meta.T0Ns += index * (long)_header!.DtNs;
-                    index = 0;
-                }
-                else
-                {
-                    // A dropped frame. Repeat the last sample so t = t0 + i*dt stays exact;
-                    // padding is counted, never silently blended into the trajectory.
-                    while (s.Count < index)
-                    {
-                        s.Write(s.Last);
-                        _gaps++;
-                        _samples++;
-                    }
-                }
+                // A dropped frame: repeat the last sample so t = t0 + i*dt stays exact.
+                // Padding is counted, never silently blended into the trajectory.
+                s.Write(s.Last);
+                _gaps++;
+                _samples++;
             }
 
             // The container requires sign-continuous quaternions so playback slerp never
@@ -523,18 +513,20 @@ public static class LiveRecorder
         }
 
         public TspiEntityEntry Meta = new();
-        public long Count;
-        public long IndexOffset;
+        public LiveIndexTracker Index;
+        public long Count => Index.Count;
         public TspiRecord Last;
         public int FlippedQuats;
         public bool WarnedNonFinite;
 
+        /// <summary>Append one record to the spool. Padding writes go through here too, so
+        /// the tracker's count and the bytes on disk advance together.</summary>
         public void Write(in TspiRecord r)
         {
             MemoryMarshal.Write(_scratch, in r);
             _fs.Write(_scratch, 0, RecordSize);
             Last = r;
-            Count++;
+            Index.Stored(0);
         }
 
         public void Flush() => _fs.Flush();

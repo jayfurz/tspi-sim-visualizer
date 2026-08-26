@@ -13,7 +13,7 @@ namespace Tspi.Core.IO
     /// (using stored velocities as tangents), Hermite-derivative velocity,
     /// slerped attitude, lerped body rates.
     /// </summary>
-    public sealed class TspiReader : IDisposable
+    public sealed class TspiReader : ITspiSource, IDisposable
     {
         private MemoryMappedFile _mmf;
         private MemoryMappedViewAccessor _view;
@@ -99,53 +99,20 @@ namespace Tspi.Core.IO
         {
             state = default;
             if (e.SampleCount <= 0 || e.Layout != TspiFormat.LayoutSixDofV1) return false;
-            double t0 = StartSec(e), t1 = EndSec(e);
-            if (tSec < t0 || tSec > t1)
-            {
-                if (!clamp) return false;
-                tSec = tSec < t0 ? t0 : t1;
-            }
+            if (!TspiSampling.TryLocate(tSec, StartSec(e), EndSec(e), e.SampleCount, DtSec,
+                    clamp, out long i, out double u))
+                return false;
             if (e.SampleCount == 1)
             {
-                var only = ReadSample(e, 0);
-                state = new TspiState
-                {
-                    PosNed = only.Pos, VelNed = only.Vel,
-                    AttBodyToNed = only.Quat.Normalized(), OmegaBody = only.Omega,
-                };
+                state = TspiSampling.Single(ReadSample(e, 0));
                 return true;
             }
-            double dt = DtSec;
-            double u = (tSec - t0) / dt;
-            long i = (long)System.Math.Floor(u);
-            if (i < 0) i = 0;
-            if (i > e.SampleCount - 2) i = e.SampleCount - 2;
-            u -= i;
-
-            TspiRecord a = ReadSample(e, i);
-            TspiRecord b = ReadSample(e, i + 1);
-
-            double h00 = (2 * u - 3) * u * u + 1;
-            double h10 = ((u - 2) * u + 1) * u;
-            double h01 = (3 - 2 * u) * u * u;
-            double h11 = (u - 1) * u * u;
-            Vec3d pos = h00 * a.Pos + (h10 * dt) * a.Vel + h01 * b.Pos + (h11 * dt) * b.Vel;
-
-            double g00 = 6 * u * u - 6 * u;
-            double g10 = 3 * u * u - 4 * u + 1;
-            double g01 = -6 * u * u + 6 * u;
-            double g11 = 3 * u * u - 2 * u;
-            Vec3d vel = (g00 / dt) * a.Pos + g10 * a.Vel + (g01 / dt) * b.Pos + g11 * b.Vel;
-
-            state = new TspiState
-            {
-                PosNed = pos,
-                VelNed = vel,
-                AttBodyToNed = QuatD.Slerp(a.Quat.Normalized(), b.Quat.Normalized(), u),
-                OmegaBody = a.Omega + u * (b.Omega - a.Omega),
-            };
+            state = TspiSampling.Interpolate(ReadSample(e, i), ReadSample(e, i + 1), u, DtSec);
             return true;
         }
+
+        /// <summary>A file is finished by definition; only a live stream keeps growing.</summary>
+        public bool IsLive => false;
 
         /// <summary>Walk the footer chain, newest first (index 0 == current footer).</summary>
         public List<TspiFooter> ReadFooterChain()

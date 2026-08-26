@@ -120,6 +120,7 @@ docs/                 FORMAT.md (normative), CONVENTIONS.md, this file
 schemas/              JSON Schemas + examples/ (validated in CI, golden.json locks format)
 models/               notional vehicle models + guidance policies (sha-256'd into file provenance)
 src/Tspi.Core/        shared format+math+manifest-authoring library == Unity package com.tspi.core
+                      (Runtime/Live/ = live-stream consumer shared by .NET and Unity)
 src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, guidance
                       seam pronav/nn, wind, RK4), measured-TSPI importer (CSV -> fixed dt)
 src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/import/inspect/recover/export/
@@ -128,7 +129,8 @@ src/Tspi.Tests/       xUnit: format round-trip, recovery, analytic V&V, golden l
 tools/tspi_py/        numpy mmap reader + pytest against the same golden file
 tools/live-stream/    live WebSocket feed into web/viewer: wire contract (PROTOCOL.md),
                       header-only C++/Boost.Beast producer, .tspi replay producer
-unity/TspiViewer/     Unity 6000.0.x playback + scenario-editing client (never simulates;
+unity/TspiViewer/     Unity 6000.0.x playback (file or live stream) + scenario-editing
+                      client (never simulates;
                       previews shell out to the tspi CLI)
 scripts/              e2e.sh, check_schemas.py
 ```
@@ -136,12 +138,14 @@ scripts/              e2e.sh, check_schemas.py
 ## Live sources (streaming producers)
 
 The viewers consume files; a *running* simulator can also push state into the web
-viewer over a WebSocket (`tools/live-stream/`, wire contract in its `PROTOCOL.md`).
+viewer **or the Unity viewer** over a WebSocket (`tools/live-stream/`, wire contract in
+its `PROTOCOL.md`).
 The stream carries the container's own 64-byte layout-1 records with time implicit
 (`t0_ns + i*dt_ns`) — no second serialization format, and no second interpolator: the
-JS reader exposes a `LiveTspiFile` with the same surface as the file reader, so a live
-pose and the replayed pose of the same run are bit-identical (asserted by
-`web/viewer/tests/live.test.mjs`). This keeps principle 1 intact for streams: the
+JS reader exposes a `LiveTspiFile` with the same surface as the file reader, and on the
+.NET side `TspiReader` and `LiveTspiSource` are both an `ITspiSource` sharing one
+interpolator (`TspiSampling`) — so a live pose and the replayed pose of the same run
+are bit-identical (asserted by `web/viewer/tests/live.test.mjs` and `LiveSourceTests`). This keeps principle 1 intact for streams: the
 producer is authoritative for dynamics, the viewer only interpolates and draws.
 An external simulator that streams is not required to write `.tspi` at all: `tspi
 record <ws://…>` (`src/Tspi.Sim/Live/LiveRecorder.cs`) subscribes like any other

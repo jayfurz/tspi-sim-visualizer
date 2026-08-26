@@ -369,6 +369,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5c4e5805dee4610aae320567d475358, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+--- !u!114 &304
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 300}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3543b25f82941f9ac02020b328e2415, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  url: ws://localhost:8787/stream
+  connectOnEnable: 1
+  autoReconnect: 1
+  reconnectSeconds: 2
+  maxMessageBytes: 8388608
+  maxFramesPerUpdate: 512
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

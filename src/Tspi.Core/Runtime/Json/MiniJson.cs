@@ -17,8 +17,14 @@ namespace Tspi.Core.Json
     ///
     /// It fully handles escape sequences including \uXXXX (surrogate halves are
     /// appended as-is, which is correct for UTF-16 strings). It is NOT a general
-    /// user-input parser: manifests are parsed by Tspi.Sim with System.Text.Json;
-    /// this codec only reads footers that this library itself wrote.
+    /// user-input parser: manifests are parsed by Tspi.Sim with System.Text.Json.
+    ///
+    /// Scope beyond footers this library wrote: live-stream control messages
+    /// (tools/live-stream/PROTOCOL.md), which arrive from an external producer. They
+    /// are small, fixed-shape, and land in Unity, where a System.Text.Json dependency
+    /// is not available — so they are parsed here, with the depth cap below as the
+    /// structural guard and every field re-validated by LiveTspiSource. Callers must
+    /// bound message size and treat any exception as a protocol error.
     /// </summary>
     public static class MiniJson
     {

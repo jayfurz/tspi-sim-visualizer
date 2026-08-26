@@ -13,9 +13,11 @@ same number — `web/viewer/tests/live.test.mjs` asserts it bit-for-bit.
 - Byte order: little-endian, matching the file format.
 - Reference producers: `tools/live-stream/cpp/` (C++/Boost.Beast, header-only)
   and `tools/live-stream/replay_server.mjs` (Node, replays a `.tspi`).
-- Reference consumers: `Tspi.LiveTspiFile` in `web/viewer/tspi.js` (the viewer) and
-  `LiveRecorder` in `src/Tspi.Sim/Live/` (the `tspi record` sink, which writes the
-  stream back into a `.tspi`). Both apply the consumer rules below identically.
+- Reference consumers: `Tspi.LiveTspiFile` in `web/viewer/tspi.js` (browser),
+  `LiveTspiSource` in `src/Tspi.Core/Runtime/Live/` (.NET and Unity, via
+  `TspiLiveClient`), and `LiveRecorder` in `src/Tspi.Sim/Live/` (the `tspi record`
+  sink). All apply the consumer rules below identically — the two .NET ones share
+  `LiveIndexTracker` so they cannot drift.
 
 ## Handshake
 

@@ -26,7 +26,52 @@ HUD, and event ticks (launch/CPA/intercept) on the scrub bar. Scrubbing is O(1) 
 entity — pos/vel Hermite + attitude slerp over the mmap, courtesy of
 `TspiReader.TrySampleAt`. The controller also exposes the open `TspiReader` (`Reader`),
 whose `ReadSample(entity, i)` is an O(1) mmap read — overlay/analytics scripts can walk
-every sample of every entity, not just the current playback pose.
+every sample of every entity, not just the current playback pose. (`Source` is the
+same thing widened to `ITspiSource`, which is what a live stream arrives as; `Reader`
+is null when the source is live.)
+
+## Live streaming (watch a run while it flies)
+
+Unity can also render a **running** simulation instead of a finished file, without
+giving up the never-simulates contract: an external producer (a C++/Boost sim, or
+anything that can write 64 bytes to a socket — see `tools/live-stream/`) pushes the
+`.tspi` format's own records over a WebSocket, and Unity interpolates and draws them
+exactly as it does a file.
+
+`Assets/Scenes/Playback.unity` already carries a **`TspiLiveClient`** component on the
+`TspiViewer` object, **disabled** so the scene still opens a file by default. To go
+live: tick it on, set `url` (default `ws://localhost:8787/stream`), press Play. Or add
+it to any GameObject that has a `TspiPlaybackController`.
+
+Try it with no C++ build at all — replay a recorded run as a live feed:
+
+```sh
+node tools/live-stream/replay_server.mjs runs/ship-to-air.tspi     # ws://localhost:8787/stream
+```
+
+What changes in the viewer when the source is live:
+
+- Entities appear as the producer announces them (a munition shows up at launch, not
+  at load), and their full-path lines grow with each arriving sample — re-decimated
+  when they would exceed `maxPathPoints`, so a long run stays bounded.
+- Playback rides the head of the stream one sample interval back (`followLive`), which
+  is what the green **LIVE** button in the HUD toggles. Scrubbing back through what has
+  already arrived detaches from the head; **LIVE** rejoins it. `loop` is hidden — a
+  live stream has no end to wrap around to.
+- The event log and scrub-bar ticks fill in as events arrive.
+- The link reconnects on its own when the producer restarts, and a fresh `hello`
+  rebinds the viewer to the new run.
+
+Both sources are the same `ITspiSource` interface and share one interpolator
+(`TspiSampling`), so a live pose and the replayed pose of the same run are the same
+number — locked down by `LiveSourceTests` on the .NET side.
+
+Platform note: `ClientWebSocket` needs a real socket stack — editor, standalone,
+desktop players. **WebGL builds can't use it**; use `web/viewer/` there, which speaks
+the same protocol.
+
+To keep a live run, record it alongside: `tspi record ws://localhost:8787/stream -o
+runs/live.tspi` writes a normal `.tspi` this viewer can then replay.
 
 ## Scenario editing (edit → run → scrub)
 

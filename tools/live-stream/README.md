@@ -116,6 +116,16 @@ entity and stream into their blocks at the end.
 Run a viewer and a recorder against the same producer at once — they are
 independent subscribers.
 
+## Consumers
+
+Three, all applying the same rules:
+
+- **Browser** — `web/viewer/`, connect box or `?ws=` (`LiveTspiFile` in `tspi.js`).
+- **Unity** — add `TspiLiveClient` to the playback object, or enable the one already in
+  the sample scene (`unity/README.md`). Editor/standalone only; WebGL can't open a
+  ClientWebSocket.
+- **`tspi record`** — the sink that writes the stream to a `.tspi` (see below).
+
 ## What the viewer does with a live source
 
 - **LIVE badge** rides the head of the stream, one sample interval behind so
@@ -136,7 +146,9 @@ independent subscribers.
 | `cpp/tspi_stream.hpp` | header-only C++ producer (Boost.Beast + Asio) |
 | `cpp/example_sim.cpp` | worked example: orbit, inbound, launch, intercept |
 | `replay_server.mjs` | Node producer that replays a `.tspi`; also serves the viewer |
-| `../../web/viewer/tspi.js` | `LiveTspiFile` — the consumer half |
+| `../../web/viewer/tspi.js` | `LiveTspiFile` — the browser consumer |
+| `../../src/Tspi.Core/Runtime/Live/` | `LiveTspiSource` — the .NET/Unity consumer |
+| `../../unity/TspiViewer/Assets/Scripts/TspiLiveClient.cs` | the Unity component that subscribes |
 | `../../web/viewer/tests/live.test.mjs` | proves live == replay, bit-for-bit |
 | `../../src/Tspi.Sim/Live/LiveRecorder.cs` | the `tspi record` sink (stream → `.tspi`) |
 | `../../src/Tspi.Tests/RecordTests.cs` | recorder tests over a real WebSocket |

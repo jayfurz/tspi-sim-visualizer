@@ -12,16 +12,29 @@ namespace TspiViewer
     public sealed class PlaybackHud : MonoBehaviour
     {
         private TspiPlaybackController _pb;
+        private TspiLiveClient _live;
         private float _savedScale = 1f;
 
-        private void Awake() => _pb = GetComponent<TspiPlaybackController>();
+        private void Awake()
+        {
+            _pb = GetComponent<TspiPlaybackController>();
+            _live = GetComponent<TspiLiveClient>();
+        }
 
         private void OnGUI()
         {
             if (!_pb.Loaded)
             {
                 // Make "nothing loaded" self-explanatory instead of a blank screen.
-                GUILayout.BeginArea(new Rect(12, 12, 680, 110), GUI.skin.box);
+                GUILayout.BeginArea(new Rect(12, 12, 680, 130), GUI.skin.box);
+                if (_live != null)
+                {
+                    GUILayout.Label("TSPI viewer — live: " + _live.Status);
+                    GUILayout.Label("Waiting for a producer at " + _live.url +
+                                    " (see tools/live-stream/).");
+                    GUILayout.EndArea();
+                    return;
+                }
                 GUILayout.Label("TSPI viewer — no file loaded");
                 GUILayout.Label(string.IsNullOrEmpty(_pb.LoadError)
                     ? "Set filePath on TspiPlaybackController (absolute, or relative to the repo root)."
@@ -47,7 +60,22 @@ namespace TspiViewer
                 if (GUILayout.Button($"{s}x", GUILayout.Width(46)))
                     _pb.timeScale = s;
             GUILayout.Label($"t = {_pb.TimeSec,7:0.00} s  /  {_pb.MaxTime:0.00} s", GUILayout.Width(220));
-            _pb.loop = GUILayout.Toggle(_pb.loop, "loop", GUILayout.Width(60));
+            if (_pb.IsLive)
+            {
+                // A live stream has no end to loop back to; offer "rejoin the head" instead.
+                GUI.color = _pb.followLive ? new Color(0.3f, 0.85f, 0.45f) : Color.white;
+                if (GUILayout.Button("LIVE", GUILayout.Width(60)))
+                {
+                    _pb.ResumeLive();
+                    if (Mathf.Approximately(_pb.timeScale, 0f)) _pb.timeScale = 1f;
+                }
+                GUI.color = Color.white;
+                if (_live != null) GUILayout.Label(_live.Status, GUILayout.Width(260));
+            }
+            else
+            {
+                _pb.loop = GUILayout.Toggle(_pb.loop, "loop", GUILayout.Width(60));
+            }
             GUILayout.EndHorizontal();
 
             double t = GUILayout.HorizontalSlider((float)_pb.TimeSec, (float)_pb.MinTime, (float)_pb.MaxTime);
