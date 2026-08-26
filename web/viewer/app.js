@@ -223,9 +223,21 @@
 
     var center = scale(add(lo, hi), 0.5);
     var radius = Math.max(len(sub(hi, center)), 100);
+    var ga = makeGridAxes(Math.max(Math.abs(lo[0]), Math.abs(hi[0]),
+      Math.abs(lo[2]), Math.abs(hi[2]), 1000) * 1.25);
 
-    // Ground grid on y=0 sized to the data, 1-2-5 spacing, ~10 cells per side.
-    var ext = Math.max(Math.abs(lo[0]), Math.abs(hi[0]), Math.abs(lo[2]), Math.abs(hi[2]), 1000) * 1.25;
+    var span = file.timeSpan();
+    return {
+      file: file, name: name, views: views, grid: ga.grid, axes: ga.axes,
+      lo: lo, hi: hi, center: center, radius: radius, span: span,
+      duration: Math.max(span.max - span.min, 1e-9),
+      live: false, byOrd: null, evCount: file.events.length,
+    };
+  }
+
+  // Ground grid on y=0 sized to the data, 1-2-5 spacing, ~10 cells per side,
+  // plus the north (accent) and east axes through the NED origin.
+  function makeGridAxes(ext) {
     var spacing = Math.pow(10, Math.floor(Math.log10(ext / 5)));
     if (ext / spacing > 10) spacing *= 2;
     if (ext / spacing > 10) spacing *= 2.5;
@@ -233,19 +245,119 @@
     var g = [];
     for (var x = -ext; x <= ext + 1e-6; x += spacing) g.push(x, 0, -ext, x, 0, ext);
     for (var z = -ext; z <= ext + 1e-6; z += spacing) g.push(-ext, 0, z, ext, 0, z);
-    var grid = { buf: staticBuffer(new Float32Array(g)), count: g.length / 3, spacing: spacing };
-    // North axis (accent) and east axis, through the NED origin.
-    var axes = {
-      n: staticBuffer(new Float32Array([0, 0, 0, 0, 0, -ext])),
-      e: staticBuffer(new Float32Array([0, 0, 0, ext, 0, 0])),
-    };
-
-    var span = file.timeSpan();
     return {
-      file: file, name: name, views: views, grid: grid, axes: axes,
-      center: center, radius: radius, span: span,
-      duration: Math.max(span.max - span.min, 1e-9),
+      grid: { buf: staticBuffer(new Float32Array(g)), count: g.length / 3, spacing: spacing, ext: ext },
+      axes: {
+        n: staticBuffer(new Float32Array([0, 0, 0, 0, 0, -ext])),
+        e: staticBuffer(new Float32Array([0, 0, 0, ext, 0, 0])),
+      },
     };
+  }
+
+  // ---------- live scene (streamed source) ----------
+  // Same scene object, but nothing is known up front: entities appear as the
+  // producer announces them and every path buffer grows by bufferSubData as
+  // records land. The grid starts at a nominal extent and is rebuilt when the
+  // data outgrows it.
+  var LIVE_PATH_CAP0 = 4096;
+
+  function buildLiveScene(file, name, extHint) {
+    var ga = makeGridAxes(Math.max(extHint || 20000, 1000));
+    return {
+      file: file, name: name, views: [], grid: ga.grid, axes: ga.axes,
+      lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity],
+      center: [0, 0, 0], radius: ga.grid.ext * 0.5,
+      span: { min: 0, max: 0 }, duration: 1e-9,
+      live: true, byOrd: Object.create(null), evCount: 0, fitted: false,
+    };
+  }
+
+  function makeLiveView(e) {
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, LIVE_PATH_CAP0 * 12, gl.DYNAMIC_DRAW);
+    return {
+      e: e, step: 1, nPts: 0, cap: LIVE_PATH_CAP0, buf: buf,
+      color: teamColor(e.team),
+      marker: e.type === 'ship' ? SHIP : MARKER,
+      scaleBase: e.type === 'munition' ? 0.45 : e.type === 'ship' ? 1.7 : 1.0,
+      row: null, alive: undefined,
+    };
+  }
+
+  // Upload only the records that arrived since the last frame.
+  function uploadLivePath(s, view) {
+    var e = view.e, from = view.nPts, n = e.samples - from;
+    if (n <= 0) return;
+    if (e.samples > view.cap) {
+      var cap = view.cap;
+      while (cap < e.samples) cap *= 2;
+      gl.bindBuffer(gl.ARRAY_BUFFER, view.buf);
+      gl.bufferData(gl.ARRAY_BUFFER, cap * 12, gl.DYNAMIC_DRAW);
+      view.cap = cap;
+      from = 0; n = e.samples;   // storage reallocated: re-upload the whole path
+    }
+    var pts = new Float32Array(n * 3);
+    for (var i = 0; i < n; i++) {
+      var o = (from + i) * 3;
+      var p = nedToRender([e.pos[o], e.pos[o + 1], e.pos[o + 2]]);
+      pts[i * 3] = p[0]; pts[i * 3 + 1] = p[1]; pts[i * 3 + 2] = p[2];
+      for (var k = 0; k < 3; k++) {
+        if (p[k] < s.lo[k]) s.lo[k] = p[k];
+        if (p[k] > s.hi[k]) s.hi[k] = p[k];
+      }
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, view.buf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, from * 12, pts);
+    view.nPts = e.samples;
+  }
+
+  // Per-frame catch-up: new entities -> views + rows, new records -> GL, new
+  // events -> panel, and the growing time span the transport scrubs over.
+  function syncLiveScene() {
+    var s = scene, f = s.file, grew = false;
+    for (var i = 0; i < f.entities.length; i++) {
+      var e = f.entities[i];
+      if (e.layout !== Tspi.LAYOUT_6DOF_V1) continue;
+      var view = s.byOrd[e.ord];
+      if (!view) {
+        view = makeLiveView(e);
+        s.views.push(view);
+        s.byOrd[e.ord] = view;
+        addEntityRow(view);
+        updateMeta();
+      }
+      if (e.samples > view.nPts) { uploadLivePath(s, view); grew = true; }
+    }
+    if (f.events.length > s.evCount) {
+      for (var k = s.evCount; k < f.events.length; k++) addEventRow(f.events[k]);
+      s.evCount = f.events.length;
+      document.getElementById('eventsPanel').classList.toggle('hidden',
+        !f.events.length || !editorEl.classList.contains('hidden'));
+    }
+    if (!grew) return;
+    var span = f.timeSpan();
+    if (!isFinite(span.min)) return;
+    s.span = span;
+    s.duration = Math.max(span.max - span.min, 1e-9);
+    s.center = scale(add(s.lo, s.hi), 0.5);
+    s.radius = Math.max(len(sub(s.hi, s.center)), 100);
+    repositionTicks();
+    regridLive();
+    // Frame the scene once the first samples show the scale of the engagement.
+    if (!s.fitted) { s.fitted = true; fitView(); }
+  }
+
+  function regridLive() {
+    var s = scene;
+    var want = Math.max(Math.abs(s.lo[0]), Math.abs(s.hi[0]),
+      Math.abs(s.lo[2]), Math.abs(s.hi[2]), 1000) * 1.25;
+    if (want <= s.grid.ext) return;
+    gl.deleteBuffer(s.grid.buf);
+    gl.deleteBuffer(s.axes.n);
+    gl.deleteBuffer(s.axes.e);
+    var ga = makeGridAxes(want);
+    s.grid = ga.grid; s.axes = ga.axes;
   }
 
   function disposeScene(s) {
@@ -305,10 +417,20 @@
   // ---------- playback state ----------
   var timeSec = 0, playing = false, speed = 1, loop = true;
   var followId = null, scrubbing = false;
+  var liveFollow = false;   // live source: ride the head of the stream
 
   function seek(t) {
     if (!scene) return;
+    if (scene.live) setLiveFollow(false);   // any manual seek leaves the head
     timeSec = Math.min(Math.max(t, scene.span.min), scene.span.max);
+  }
+
+  function setLiveFollow(on) {
+    liveFollow = on;
+    var b = document.getElementById('liveBtn');
+    b.classList.toggle('on', on);
+    b.title = on ? 'following the live head — click or scrub to detach'
+                 : 'jump back to the live head';
   }
   function setPlaying(p) {
     playing = p;
@@ -334,6 +456,10 @@
 
   function loadBuffer(buf, name, startAtSec) {
     var file = Tspi.parse(buf, name);
+    liveUrl = null;
+    closeLive();                       // a file supersedes any live session
+    setLiveFollow(false);
+    document.getElementById('liveBtn').classList.add('hidden');
     disposeScene(scene);
     scene = buildScene(file, name);
     followId = null;
@@ -375,7 +501,15 @@
     if (ev.dataTransfer.files.length) loadFile(ev.dataTransfer.files[0]);
   });
 
-  playBtn.addEventListener('click', function () { setPlaying(!playing); });
+  playBtn.addEventListener('click', function () {
+    setPlaying(!playing);
+    if (scene && scene.live) setLiveFollow(playing);
+  });
+  document.getElementById('liveBtn').addEventListener('click', function () {
+    if (!scene || !scene.live) return;
+    setLiveFollow(true);
+    setPlaying(true);
+  });
   document.getElementById('speedSel').addEventListener('change', function (ev) {
     speed = parseFloat(ev.target.value);
   });
@@ -407,57 +541,80 @@
   function buildStaticUi() {
     var f = scene.file;
     document.getElementById('fileName').textContent = scene.name;
-    var dyn = '';
+    updateMeta();
+    // A live feed has no end to loop back to, and entities keep arriving.
+    document.getElementById('loopChk').parentNode.classList.toggle('hidden', scene.live);
+
+    document.getElementById('entities').innerHTML = '';
+    document.getElementById('events').innerHTML = '';
+    document.getElementById('ticks').innerHTML = '';
+    ticksById = [];
+    scene.views.forEach(addEntityRow);
+    f.events.forEach(addEventRow);
+    scene.evCount = f.events.length;
+    document.getElementById('eventsPanel').classList.toggle('hidden', f.events.length === 0);
+  }
+
+  // Entity count grows while a live run is in progress, so this is not one-shot.
+  function updateMeta() {
+    var f = scene.file, dyn = '';
     for (var i = 0; i < f.provenance.length; i++)
       if (f.provenance[i].dynamics) dyn = f.provenance[i].dynamics;
     document.getElementById('fileMeta').textContent =
       f.entities.length + ' entities · dt ' + (f.dtSec * 1000).toFixed(1) + ' ms · origin ' +
       f.header.originLatDeg.toFixed(4) + '°, ' + f.header.originLonDeg.toFixed(4) + '°, ' +
       f.header.originAltM.toFixed(0) + ' m · ' + (dyn || 'unknown dynamics');
+  }
 
-    var entPanel = document.getElementById('entities');
-    entPanel.innerHTML = '';
-    scene.views.forEach(function (v) {
-      var row = document.createElement('div');
-      row.className = 'row';
-      var c = v.color;
-      row.innerHTML = '<span class="chip" style="background:rgb(' +
-        (c[0] * 255 | 0) + ',' + (c[1] * 255 | 0) + ',' + (c[2] * 255 | 0) + ')"></span>' +
-        '<span>' + v.e.id + '</span><span class="sub">' + v.e.type + ' · ' + v.e.model + '</span>';
-      row.title = 'click to follow · alive ' + fmtT(scene.file.startSec(v.e)) +
+  function addEntityRow(v) {
+    var row = document.createElement('div');
+    row.className = 'row';
+    var c = v.color;
+    row.innerHTML = '<span class="chip" style="background:rgb(' +
+      (c[0] * 255 | 0) + ',' + (c[1] * 255 | 0) + ',' + (c[2] * 255 | 0) + ')"></span>' +
+      '<span>' + v.e.id + '</span><span class="sub">' + v.e.type + ' · ' + v.e.model + '</span>';
+    row.title = scene.live
+      ? 'click to follow · live from t=' + fmtT(scene.file.startSec(v.e))
+      : 'click to follow · alive ' + fmtT(scene.file.startSec(v.e)) +
         ' – ' + fmtT(scene.file.endSec(v.e));
-      row.addEventListener('click', function () {
-        followId = followId === v.e.id ? null : v.e.id;
-        refreshEntityRows();
-      });
-      entPanel.appendChild(row);
-      v.row = row;
-      v.alive = undefined;
+    row.addEventListener('click', function () {
+      followId = followId === v.e.id ? null : v.e.id;
+      refreshEntityRows();
     });
+    document.getElementById('entities').appendChild(row);
+    v.row = row;
+    v.alive = undefined;
+  }
 
+  var ticksById = [];   // {t, el} — repositioned when a live span grows
+
+  function addEventRow(ev) {
+    var f = scene.file;
     var ordToId = {};
     f.entities.forEach(function (e) { ordToId[e.ord] = e.id; });
+    var t = ev.t_ns / 1e9;
+    var who = (ev.src != null ? (ordToId[ev.src] || ev.src) : '') +
+      (ev.dst != null ? ' → ' + (ordToId[ev.dst] || ev.dst) : '');
+    var extra = ev.data && ev.data.miss_m != null ? ' (miss ' + ev.data.miss_m.toFixed(1) + ' m)' : '';
+    var row = document.createElement('div');
+    row.className = 'ev';
+    row.innerHTML = '<span class="t">' + fmtT(t) + '</span> <span class="kind">' +
+      ev.kind + '</span> ' + who + extra;
+    row.addEventListener('click', function () { seek(t); });
     var evPanel = document.getElementById('events');
-    evPanel.innerHTML = '';
-    var ticks = document.getElementById('ticks');
-    ticks.innerHTML = '';
-    f.events.forEach(function (ev) {
-      var t = ev.t_ns / 1e9;
-      var who = (ev.src != null ? (ordToId[ev.src] || ev.src) : '') +
-        (ev.dst != null ? ' → ' + (ordToId[ev.dst] || ev.dst) : '');
-      var extra = ev.data && ev.data.miss_m != null ? ' (miss ' + ev.data.miss_m.toFixed(1) + ' m)' : '';
-      var row = document.createElement('div');
-      row.className = 'ev';
-      row.innerHTML = '<span class="t">' + fmtT(t) + '</span> <span class="kind">' +
-        ev.kind + '</span> ' + who + extra;
-      row.addEventListener('click', function () { seek(t); });
-      evPanel.appendChild(row);
-      var tick = document.createElement('div');
-      tick.className = 'tick';
-      tick.style.left = ((t - scene.span.min) / scene.duration * 100) + '%';
-      ticks.appendChild(tick);
-    });
-    document.getElementById('eventsPanel').classList.toggle('hidden', f.events.length === 0);
+    evPanel.appendChild(row);
+    evPanel.scrollTop = evPanel.scrollHeight;
+    var tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.left = ((t - scene.span.min) / scene.duration * 100) + '%';
+    document.getElementById('ticks').appendChild(tick);
+    ticksById.push({ t: t, el: tick });
+  }
+
+  function repositionTicks() {
+    for (var i = 0; i < ticksById.length; i++)
+      ticksById[i].el.style.left =
+        ((ticksById[i].t - scene.span.min) / scene.duration * 100) + '%';
   }
 
   function refreshEntityRows() {
@@ -485,14 +642,20 @@
     gl.clearColor(0.051, 0.067, 0.09, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (!scene) { lastTs = ts; return; }
+    if (scene.live) syncLiveScene();
 
     var dtWall = lastTs === null ? 0 : (ts - lastTs) / 1000;
     lastTs = ts;
-    if (playing && !scrubbing) {
+    if (scene.live && liveFollow && !scrubbing) {
+      // Ride the head of the stream, one sample interval behind so there is
+      // always a bracketing pair of records to interpolate between.
+      timeSec = Math.max(scene.span.min, scene.span.max - scene.file.dtSec * 1.001);
+    } else if (playing && !scrubbing) {
       timeSec += dtWall * speed;
       if (timeSec > scene.span.max)
-        timeSec = loop ? scene.span.min + (timeSec - scene.span.max) % scene.duration
-                       : (setPlaying(false), scene.span.max);
+        timeSec = (loop && !scene.live)
+          ? scene.span.min + (timeSec - scene.span.max) % scene.duration
+          : (setPlaying(false), scene.span.max);
     }
 
     var f = scene.file;
@@ -544,7 +707,9 @@
     if (!scrubbing) scrub.value = String((timeSec - scene.span.min) / scene.duration);
     var wall = new Date(f.header.epochUnixMs + timeSec * 1000);
     timeLbl.innerHTML = '<b>t=' + fmtT(timeSec) + '</b> / ' + fmtT(scene.span.max) +
-      ' · ' + wall.toISOString().replace('T', ' ').replace('Z', 'Z');
+      ' · ' + wall.toISOString().replace('T', ' ').replace('Z', 'Z') +
+      (scene.live ? ' · ' + f.received + ' rec' +
+        (f.gaps ? ' · ' + f.gaps + ' filled' : '') + (f.ended ? ' · ended' : '') : '');
   }
   requestAnimationFrame(frame);
 
@@ -673,4 +838,100 @@
         if (e && e.message && e.message !== 'no api') showError(String(e.message));
       });
   })();
+
+  // ---------- live source (streaming producer over WebSocket) ----------
+  // The page still never simulates: a producer (C++/Boost sim, tspi serve, any
+  // language that can write 64 bytes) pushes the same layout-1 records the file
+  // format stores, and the same Hermite/slerp sampler draws them. See
+  // tools/cpp-stream/ for a header-only Boost.Beast producer.
+  var liveWs = null, liveUrl = null, liveRetry = null;
+
+  function setLiveStatus(text, cls) {
+    var b = document.getElementById('liveBtn');
+    b.classList.remove('hidden');
+    b.classList.toggle('bad', cls === 'bad');
+    b.firstChild.nodeValue = text;
+  }
+
+  function closeLive() {
+    clearTimeout(liveRetry);
+    if (liveWs) {
+      liveWs.onclose = liveWs.onerror = liveWs.onmessage = null;
+      try { liveWs.close(); } catch (e) { /* already closing */ }
+      liveWs = null;
+    }
+  }
+
+  function connectLive(url) {
+    closeLive();
+    liveUrl = url;
+    var ws;
+    try { ws = new WebSocket(url); }
+    catch (e) { showError('live: ' + (e.message || e)); return; }
+    ws.binaryType = 'arraybuffer';
+    liveWs = ws;
+    setLiveStatus('connecting…');
+
+    ws.onopen = function () { setLiveStatus('LIVE'); };
+    ws.onmessage = function (ev) {
+      try {
+        if (typeof ev.data === 'string') {
+          var msg = JSON.parse(ev.data);
+          if (msg.type === 'hello') { startLive(msg, url); return; }
+          if (!scene || !scene.live) return;   // records before hello: ignore
+          var r = scene.file.ingestJson(msg);
+          if (r.kind === 'end') setLiveStatus('ENDED');
+        } else if (scene && scene.live) {
+          scene.file.ingestBatch(ev.data);     // drawn on the next frame
+        }
+      } catch (e) {
+        showError('live: ' + (e.message || e));
+      }
+    };
+    ws.onerror = function () { setLiveStatus('LINK ERR', 'bad'); };
+    ws.onclose = function () {
+      liveWs = null;
+      if (scene && scene.live && scene.file.ended) { setLiveStatus('ENDED'); return; }
+      setLiveStatus('OFFLINE', 'bad');
+      // Producer restarts are normal during development: retry until a file is
+      // opened or another URL is dialled.
+      liveRetry = setTimeout(function () { if (liveUrl === url) connectLive(url); }, 2000);
+    };
+  }
+
+  function startLive(hello, url) {
+    var file = new Tspi.LiveTspiFile(hello, hello.name || url);
+    disposeScene(scene);
+    scene = buildLiveScene(file, file.name, hello.extent_m);
+    followId = null;
+    timeSec = 0;
+    ticksById = [];
+    buildStaticUi();
+    setPlaying(true);
+    setLiveFollow(true);
+    setLiveStatus('LIVE');
+    drop.classList.add('hidden');
+    ['topbar', 'entities', 'transport'].forEach(function (id) {
+      document.getElementById(id).classList.remove('hidden');
+    });
+  }
+
+  // The drop overlay opens the file picker on click; the connect row sits on top.
+  document.querySelector('#drop .live-connect').addEventListener('click', function (ev) {
+    ev.stopPropagation();
+  });
+  document.getElementById('connectBtn').addEventListener('click', function () {
+    var url = document.getElementById('wsInput').value.trim();
+    if (url) connectLive(url);
+  });
+  document.getElementById('wsInput').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') document.getElementById('connectBtn').click();
+  });
+
+  // ?ws=<url> connects to a streaming producer on load.
+  (function () {
+    var url = new URLSearchParams(window.location.search).get('ws');
+    if (url) connectLive(url);
+  })();
+
 })();

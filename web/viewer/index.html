@@ -49,7 +49,10 @@
   #ticks { position: absolute; left: 0; right: 0; top: -5px; height: 5px; pointer-events: none; }
   #ticks .tick { position: absolute; width: 2px; height: 5px; background: #e8c34d;
     transform: translateX(-1px); }
-  #timeLbl { min-width: 190px; text-align: right; color: var(--dim); }
+  #liveBtn { letter-spacing: 0.08em; font-size: 11px; color: var(--dim); }
+  #liveBtn.on { color: #0d1117; background: #4ad07a; border-color: #4ad07a; font-weight: bold; }
+  #liveBtn.bad { color: #ff8a7a; border-color: #7a3a33; }
+  #timeLbl { min-width: 260px; text-align: right; color: var(--dim); }
   #timeLbl b { color: var(--fg); }
 
   button, select { background: #1a2331; color: var(--fg); border: 1px solid var(--border);
@@ -81,6 +84,9 @@
   #drop .big { font-size: 20px; color: var(--fg); }
   #drop.dragover { outline: 2px dashed var(--accent); outline-offset: -14px; }
   #drop kbd { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; }
+  #drop .live-connect { display: flex; gap: 6px; align-items: center; color: var(--dim); }
+  #drop input[type=text] { background: #0f1620; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 8px; font: inherit; }
   .hidden { display: none !important; }
   #err { position: absolute; left: 50%; top: 46px; transform: translateX(-50%);
     background: #3a1520; border: 1px solid #a03040; color: #ffb0b8; padding: 6px 14px;
@@ -113,6 +119,7 @@
     <option value="4">4×</option><option value="8">8×</option>
   </select>
   <label class="chk"><input type="checkbox" id="loopChk" checked> loop</label>
+  <button id="liveBtn" class="hidden" title="jump back to the live head">LIVE</button>
   <div class="scrubwrap">
     <div id="ticks"></div>
     <input type="range" id="scrub" min="0" max="1" step="any" value="0">
@@ -125,6 +132,10 @@
   <div>or click to browse &mdash; runs entirely in this page, nothing is uploaded</div>
   <div><kbd>space</kbd> play/pause &nbsp; <kbd>&larr;/&rarr;</kbd> &plusmn;1 s &nbsp;
     <kbd>shift</kbd>+<kbd>&larr;/&rarr;</kbd> &plusmn;10 s &nbsp; <kbd>F</kbd> fit view</div>
+  <div class="live-connect">or connect to a live simulator:
+    <input id="wsInput" type="text" spellcheck="false" placeholder="ws://localhost:8787/stream"
+      value="ws://localhost:8787/stream" size="30">
+    <button id="connectBtn">connect</button></div>
   <div id="serveHint" class="hidden">served by <b>tspi serve</b> &mdash;
     <a href="#" id="editOpenLink">open the scenario editor</a></div>
 </div>

@@ -25,8 +25,11 @@ server — and drag a `.tspi` onto it. Nothing is uploaded; the file is read in-
 - **Scenario editor** (served mode only): when the page is hosted by `tspi serve`, an
   `edit` panel appears — manifest JSON in a textarea, validate/run buttons, optional
   seed override, and "resume at t": the new run reloads at the current playback time.
+- **Live sources**: connect to a running simulator over a WebSocket and watch it
+  fly — see "Live streaming" below.
 - **Deep links** (http only): `index.html?file=<url>&t=<sec>` fetches a served file
-  and opens paused at `t`; `?scenario=<url>` preloads the editor with a manifest.
+  and opens paused at `t`; `?scenario=<url>` preloads the editor with a manifest;
+  `?ws=<url>` connects to a live producer on load.
 
 Entities appear at their `t0` and vanish at their last sample, exactly as recorded —
 a munition doesn't exist before `launch` and disappears at `intercept`/`ground_impact`.
@@ -40,12 +43,36 @@ a munition doesn't exist before `launch` and disappears at `intercept`/`ground_i
 - `viewer/index.html` — markup + styles, loads the two scripts. Classic scripts (no
   modules) so `file://` works everywhere.
 - `viewer/tests/` — Node cross-check of the JS reader against the trusted Python
-  reader (`tools/tspi_py`) on real files:
+  reader (`tools/tspi_py`) on real files, plus the live-stream equivalence test:
 
 ```sh
 python viewer/tests/ref_dump.py run.tspi ../tools/tspi_py/tests/data/golden-v1.tspi > ref.json
 node viewer/tests/parser.test.mjs ref.json run.tspi ../tools/tspi_py/tests/data/golden-v1.tspi
+node viewer/tests/live.test.mjs ../runs/ship-to-air.tspi
 ```
+
+## Live streaming
+
+A running simulator can push state into this page instead of handing it a finished
+file: `tools/live-stream/` holds the wire contract (`PROTOCOL.md`), a header-only
+C++/Boost.Beast producer for dropping into an existing simulator, and a Node
+producer that replays a `.tspi` as if it were live.
+
+```sh
+node tools/live-stream/replay_server.mjs runs/ship-to-air.tspi   # prints the ?ws= URL
+```
+
+The viewer still never simulates. The bytes on the wire are **the file format's own
+64-byte layout-1 records**, so `LiveTspiFile` (in `viewer/tspi.js`) presents the same
+surface `TspiFile` does — `entities`, `readSample`, `sampleAt`, `timeSpan` — and the
+renderer runs one code path for both. `viewer/tests/live.test.mjs` pushes a real run
+through the wire encoding and demands bit-identical poses out the other side.
+
+What differs from a file: entities appear as the producer announces them, path
+buffers grow by `bufferSubData`, the time span keeps extending, and playback rides
+one sample interval behind the newest record (the `LIVE` badge; scrubbing back
+detaches, the badge re-attaches). Dropped frames are padded so `t = t0 + i*dt` stays
+exact, and the fill count is reported next to the record count.
 
 ## tspi serve — the edit loop backend
 

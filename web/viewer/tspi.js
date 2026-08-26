@@ -230,7 +230,206 @@
     return { min: min, max: max };
   };
 
-  var api = { parse: parse, crc32: crc32, slerp: slerp, LAYOUT_6DOF_V1: LAYOUT_6DOF_V1 };
+
+  // ------------------------------------------------------------------
+  // Live streaming: same records, arriving over a socket instead of a file.
+  //
+  // A live producer (e.g. a C++/Boost sim — see tools/cpp-stream) sends the very
+  // same 64-byte layout-1 records the file format stores, so the wire is a
+  // memcpy on the producer side and the viewer's interpolation math is
+  // untouched: Hermite/slerp between the last two received samples.
+  //
+  //   text frames (JSON):  {"type":"hello"|"entity"|"event"|"end", ...}
+  //   binary frames:       [u32 count]( [u32 ord][u32 sample_index][64 B record] )*
+  //
+  // LiveTspiFile implements the same surface TspiFile does (entities, dtSec,
+  // startSec/endSec/readSample/sampleAt/timeSpan), so app.js renders a stream and
+  // a file through one code path. Storage is growable typed arrays per entity
+  // rather than a DataView over one fixed ArrayBuffer.
+  var LIVE_PROTOCOL = 1;
+
+  /** hello: {dt_ns, epoch_unix_ns (string|number), origin:{lat_deg,lon_deg,alt_m}, entities:[...]} */
+  function LiveTspiFile(hello, name) {
+    if (!hello || hello.type !== 'hello') throw new Error('.tspi live: first message must be hello');
+    if (hello.protocol != null && hello.protocol !== LIVE_PROTOCOL)
+      throw new Error('.tspi live: unsupported protocol ' + hello.protocol);
+    var dtNs = Number(hello.dt_ns);
+    if (!(dtNs > 0)) throw new Error('.tspi live: dt_ns must be positive');
+    var epoch = BigInt(hello.epoch_unix_ns == null ? 0 : hello.epoch_unix_ns);
+    var origin = hello.origin || {};
+
+    this.name = name || hello.name || 'live';
+    this.live = true;
+    this.header = {
+      version: 1, flags: 0, dtNs: dtNs,
+      epochUnixNs: epoch,
+      epochUnixMs: Number(epoch / 1000000n),
+      originLatDeg: origin.lat_deg || 0,
+      originLonDeg: origin.lon_deg || 0,
+      originAltM: origin.alt_m || 0,
+      manifestSha256: hello.manifest_sha256 || '',
+    };
+    this.footer = null;
+    this.entities = [];
+    this.events = [];
+    this.provenance = hello.provenance ||
+      [{ dynamics: hello.dynamics || 'live stream (producer-authoritative)' }];
+    this.environment = hello.environment || null;
+    this.dtSec = dtNs / 1e9;
+    this.ended = false;
+    this.gaps = 0;        // samples synthesised to cover a dropped/late index
+    this.received = 0;    // records ingested
+    this._byOrd = Object.create(null);
+    (hello.entities || []).forEach(this.addEntity, this);
+  }
+
+  /** Declare an entity (from hello, or a later {"type":"entity"} message). */
+  LiveTspiFile.prototype.addEntity = function (d) {
+    if (d.ord == null) throw new Error('.tspi live: entity needs an ord');
+    if (this._byOrd[d.ord]) return this._byOrd[d.ord];
+    var e = {
+      ord: d.ord, id: d.id || ('ord' + d.ord), team: d.team || 'white',
+      type: d.type || 'aircraft', model: d.model || 'live',
+      parent: d.parent == null ? null : d.parent,
+      t0Ns: Number(d.t0_ns || 0), samples: 0,
+      offset: 0, stride: STRIDE_6DOF_V1, layout: d.layout == null ? LAYOUT_6DOF_V1 : d.layout,
+      live: true, cap: 0, idxOff: 0, pos: null, vel: null, quat: null, omega: null,
+    };
+    growEntity(e, 1024);
+    this.entities.push(e);
+    this._byOrd[e.ord] = e;
+    return e;
+  };
+
+  function growEntity(e, need) {
+    if (e.cap >= need) return;
+    var cap = Math.max(1024, e.cap * 2);
+    while (cap < need) cap *= 2;
+    var pos = new Float64Array(cap * 3), vel = new Float32Array(cap * 3);
+    var quat = new Float32Array(cap * 4), omega = new Float32Array(cap * 3);
+    if (e.samples > 0) {
+      pos.set(e.pos.subarray(0, e.samples * 3));
+      vel.set(e.vel.subarray(0, e.samples * 3));
+      quat.set(e.quat.subarray(0, e.samples * 4));
+      omega.set(e.omega.subarray(0, e.samples * 3));
+    }
+    e.pos = pos; e.vel = vel; e.quat = quat; e.omega = omega; e.cap = cap;
+  }
+
+  LiveTspiFile.prototype.readSample = function (e, i) {
+    if (i < 0 || i >= e.samples) throw new Error('.tspi live: sample index out of range');
+    var p = i * 3, q = i * 4;
+    return {
+      pos: [e.pos[p], e.pos[p + 1], e.pos[p + 2]],
+      vel: [e.vel[p], e.vel[p + 1], e.vel[p + 2]],
+      quat: [e.quat[q], e.quat[q + 1], e.quat[q + 2], e.quat[q + 3]],
+      omega: [e.omega[p], e.omega[p + 1], e.omega[p + 2]],
+    };
+  };
+
+  // Append one decoded record at its sample index. Out-of-order/duplicate indices
+  // are dropped; a forward gap (a dropped frame) is padded by repeating the last
+  // sample so `t = t0 + i*dt` stays exact — the stream stays playable, and the
+  // padding is counted in `gaps` rather than hidden.
+  //
+  // Joining a run already in progress is normal (open the viewer at any time):
+  // the entity's first received record rebases local storage to that index and
+  // moves t0 to the record's true time, so the trail starts where the viewer
+  // joined while every sample keeps its real sim timestamp. `idxOff` keeps the
+  // producer's indices and local indices in step from then on.
+  LiveTspiFile.prototype.appendSample = function (e, index, rec) {
+    index -= e.idxOff;
+    if (index < e.samples) return false;
+    if (index > e.samples) {
+      if (e.samples === 0) {
+        e.idxOff += index;
+        e.t0Ns += index * this.header.dtNs;
+        index = 0;
+      } else {
+        growEntity(e, index + 1);
+        var last = e.samples - 1;
+        while (e.samples < index) {
+          var p = e.samples * 3, lp = last * 3, q = e.samples * 4, lq = last * 4;
+          e.pos[p] = e.pos[lp]; e.pos[p + 1] = e.pos[lp + 1]; e.pos[p + 2] = e.pos[lp + 2];
+          e.vel[p] = e.vel[lp]; e.vel[p + 1] = e.vel[lp + 1]; e.vel[p + 2] = e.vel[lp + 2];
+          e.quat[q] = e.quat[lq]; e.quat[q + 1] = e.quat[lq + 1];
+          e.quat[q + 2] = e.quat[lq + 2]; e.quat[q + 3] = e.quat[lq + 3];
+          e.omega[p] = e.omega[lp]; e.omega[p + 1] = e.omega[lp + 1]; e.omega[p + 2] = e.omega[lp + 2];
+          e.samples++;
+          this.gaps++;
+        }
+      }
+    }
+    growEntity(e, e.samples + 1);
+    var i = e.samples, o3 = i * 3, o4 = i * 4;
+    e.pos[o3] = rec.pos[0]; e.pos[o3 + 1] = rec.pos[1]; e.pos[o3 + 2] = rec.pos[2];
+    e.vel[o3] = rec.vel[0]; e.vel[o3 + 1] = rec.vel[1]; e.vel[o3 + 2] = rec.vel[2];
+    e.quat[o4] = rec.quat[0]; e.quat[o4 + 1] = rec.quat[1];
+    e.quat[o4 + 2] = rec.quat[2]; e.quat[o4 + 3] = rec.quat[3];
+    e.omega[o3] = rec.omega[0]; e.omega[o3 + 1] = rec.omega[1]; e.omega[o3 + 2] = rec.omega[2];
+    e.samples++;
+    this.received++;
+    return true;
+  };
+
+  /**
+   * Ingest one binary batch frame: [u32 count]( [u32 ord][u32 idx][64 B record] )*.
+   * Records for unknown ords are dropped (the producer must announce entities
+   * first). Returns the set of entities that grew, for incremental GL upload.
+   */
+  LiveTspiFile.prototype.ingestBatch = function (buffer) {
+    var dv = new DataView(buffer);
+    if (dv.byteLength < 4) throw new Error('.tspi live: short batch frame');
+    var count = dv.getUint32(0, true);
+    if (4 + count * 72 > dv.byteLength) throw new Error('.tspi live: truncated batch frame');
+    var touched = [];
+    for (var k = 0; k < count; k++) {
+      var b = 4 + k * 72;
+      var e = this._byOrd[dv.getUint32(b, true)];
+      if (!e) continue;
+      var o = b + 8;
+      var ok = this.appendSample(e, dv.getUint32(b + 4, true), {
+        pos: [dv.getFloat64(o, true), dv.getFloat64(o + 8, true), dv.getFloat64(o + 16, true)],
+        vel: [dv.getFloat32(o + 24, true), dv.getFloat32(o + 28, true), dv.getFloat32(o + 32, true)],
+        quat: [dv.getFloat32(o + 36, true), dv.getFloat32(o + 40, true),
+               dv.getFloat32(o + 44, true), dv.getFloat32(o + 48, true)],
+        omega: [dv.getFloat32(o + 52, true), dv.getFloat32(o + 56, true), dv.getFloat32(o + 60, true)],
+      });
+      if (ok && touched.indexOf(e) < 0) touched.push(e);
+    }
+    return touched;
+  };
+
+  /** Ingest one JSON control message. Returns {kind, entity?} for the caller's UI. */
+  LiveTspiFile.prototype.ingestJson = function (msg) {
+    switch (msg.type) {
+      // The descriptor is nested: an entity's own `type` (aircraft/munition/ship)
+      // must not collide with the message envelope's `type`.
+      case 'entity': return { kind: 'entity', entity: this.addEntity(msg.entity || msg) };
+      case 'event':
+        this.events.push({
+          t_ns: Number(msg.t_ns), kind: msg.kind,
+          src: msg.src == null ? null : msg.src, dst: msg.dst == null ? null : msg.dst,
+          data: msg.data || null,
+        });
+        return { kind: 'event', event: this.events[this.events.length - 1] };
+      case 'end': this.ended = true; return { kind: 'end' };
+      case 'hello': throw new Error('.tspi live: duplicate hello');
+      default: return { kind: msg.type || 'unknown' };
+    }
+  };
+
+  // The sampling half is shared verbatim with the file reader: same Hermite
+  // position, same slerp — a live pose and a replayed pose are the same number.
+  ['findEntity', 'startSec', 'endSec', 'sampleAt', 'timeSpan'].forEach(function (m) {
+    LiveTspiFile.prototype[m] = TspiFile.prototype[m];
+  });
+
+  var api = {
+    parse: parse, crc32: crc32, slerp: slerp,
+    LAYOUT_6DOF_V1: LAYOUT_6DOF_V1, STRIDE_6DOF_V1: STRIDE_6DOF_V1,
+    LiveTspiFile: LiveTspiFile, LIVE_PROTOCOL: LIVE_PROTOCOL,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else this.Tspi = api;
 }).call(this);

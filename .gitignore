@@ -4,6 +4,9 @@ bin/
 obj/
 *.user
 
+# CMake output for the C++ live-stream producer (tools/live-stream/cpp)
+build/
+
 # Generated trajectory runs (golden test fixture is whitelisted below)
 runs/
 *.tspi
