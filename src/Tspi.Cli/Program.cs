@@ -28,6 +28,7 @@ public static class Program
                 "export" => ExportCommand.Run(rest),
                 "diff" => DiffCommand.Run(rest),
                 "serve" => ServeCommand.Run(rest),
+                "record" => RecordCommand.Run(rest),
                 "-h" or "--help" or "help" => PrintUsageReturn(),
                 _ => Unknown(verb),
             };
@@ -72,6 +73,9 @@ usage: tspi <command> [options]
   diff <a.tspi> <b.tspi> [--tol-m M]        compare two runs (determinism check)
   serve [file.tspi] [--port N] [--bind ADDR] [--root DIR] [--out-dir DIR] [--models DIR]
         [--viewer DIR]                      serve the web viewer + run/validate API
+  record <ws://host:port/stream> [-o out.tspi] [--duration S] [--quiet]
+                                            record a live producer's stream to a .tspi
+                                            (Ctrl-C stops and finishes the file)
 
 Models are resolved as <name>.json from --models dirs (default: ./models).");
     }

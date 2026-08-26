@@ -13,7 +13,9 @@ same number — `web/viewer/tests/live.test.mjs` asserts it bit-for-bit.
 - Byte order: little-endian, matching the file format.
 - Reference producers: `tools/live-stream/cpp/` (C++/Boost.Beast, header-only)
   and `tools/live-stream/replay_server.mjs` (Node, replays a `.tspi`).
-- Reference consumer: `Tspi.LiveTspiFile` in `web/viewer/tspi.js`.
+- Reference consumers: `Tspi.LiveTspiFile` in `web/viewer/tspi.js` (the viewer) and
+  `LiveRecorder` in `src/Tspi.Sim/Live/` (the `tspi record` sink, which writes the
+  stream back into a `.tspi`). Both apply the consumer rules below identically.
 
 ## Handshake
 
@@ -89,13 +91,19 @@ These are what `LiveTspiFile` does; a different consumer should match them.
   sample keeps its real sim timestamp.
 - The viewer renders one sample interval behind the newest record, so there is
   always a bracketing pair to interpolate between.
+- Records carrying non-finite values are dropped (and the resulting hole padded)
+  rather than written into a file.
+- **Quaternions should be sign-continuous** (`dot(q_i, q_i+1) >= 0`) so playback
+  slerp never takes the long way round. Producers that build attitude per-sample
+  often are not — `tspi record` flips signs as needed on the way into the file and
+  counts the fixes in provenance, and viewer slerp is shortest-path regardless.
 
 ## What the protocol deliberately does not do
 
 - **No history backfill.** A viewer that joins late sees the run from its join
-  point on. Record a `.tspi` alongside the stream if the full run matters — the
-  file format is append-only and torn-append-safe, so both can run at once, and
-  the recorded file replays identically in the same viewer.
+  point on. Run `tspi record ws://…` from the start if the full run matters — a
+  recorder is just another subscriber, so it costs the producer one more socket,
+  and the recorded file replays identically in the same viewer.
 - **No client→server channel.** Viewers never command the sim; control stays
   wherever the sim's own controls are. (The scenario editor's run loop is the
   separate `tspi serve` HTTP API, `web/README.md`.)

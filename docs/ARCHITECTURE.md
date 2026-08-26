@@ -122,7 +122,8 @@ models/               notional vehicle models + guidance policies (sha-256'd int
 src/Tspi.Core/        shared format+math+manifest-authoring library == Unity package com.tspi.core
 src/Tspi.Sim/         manifest parsing, engine (autopilot, rigid-body rotation, guidance
                       seam pronav/nn, wind, RK4), measured-TSPI importer (CSV -> fixed dt)
-src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/import/inspect/recover/export/diff)
+src/Tspi.Cli/         tspi verb CLI (validate/run/sweep/append/import/inspect/recover/export/
+                      diff/serve/record)
 src/Tspi.Tests/       xUnit: format round-trip, recovery, analytic V&V, golden lock
 tools/tspi_py/        numpy mmap reader + pytest against the same golden file
 tools/live-stream/    live WebSocket feed into web/viewer: wire contract (PROTOCOL.md),
@@ -142,9 +143,14 @@ JS reader exposes a `LiveTspiFile` with the same surface as the file reader, so 
 pose and the replayed pose of the same run are bit-identical (asserted by
 `web/viewer/tests/live.test.mjs`). This keeps principle 1 intact for streams: the
 producer is authoritative for dynamics, the viewer only interpolates and draws.
-An external simulator that streams is not required to write `.tspi` at all, but the
-recommended setup is to do both — the container is append-only, so recording costs
-nothing extra and the run stays replayable, diffable, and analysable afterwards.
+An external simulator that streams is not required to write `.tspi` at all: `tspi
+record <ws://…>` (`src/Tspi.Sim/Live/LiveRecorder.cs`) subscribes like any other
+viewer and lands the run in the container, so a live engagement ends up replayable,
+diffable and appendable-to without the producer knowing anything about the file
+format. Recording copies the streamed records rather than re-interpolating them, so a
+recorded replay is bit-identical to its source; imperfect input (dropped frames,
+mid-stream joins, non-sign-continuous quaternions) is repaired to the container's
+rules and *counted in provenance* rather than silently smoothed.
 
 ## Scaling numbers (measured on the 12-core dev box)
 

@@ -60,6 +60,7 @@ producer that replays a `.tspi` as if it were live.
 
 ```sh
 node tools/live-stream/replay_server.mjs runs/ship-to-air.tspi   # prints the ?ws= URL
+tspi record ws://localhost:8787/stream -o runs/live.tspi         # save the live run
 ```
 
 The viewer still never simulates. The bytes on the wire are **the file format's own
@@ -68,7 +69,9 @@ surface `TspiFile` does — `entities`, `readSample`, `sampleAt`, `timeSpan` —
 renderer runs one code path for both. `viewer/tests/live.test.mjs` pushes a real run
 through the wire encoding and demands bit-identical poses out the other side.
 
-What differs from a file: entities appear as the producer announces them, path
+A live producer keeps no history, so `tspi record` is the sink that saves one: it
+subscribes like any other viewer and writes the stream into a `.tspi`, which then
+replays in this same page. What differs from a file: entities appear as the producer announces them, path
 buffers grow by `bufferSubData`, the time span keeps extending, and playback rides
 one sample interval behind the newest record (the `LIVE` badge; scrubbing back
 detaches, the badge re-attaches). Dropped frames are padded so `t = t0 + i*dt` stays

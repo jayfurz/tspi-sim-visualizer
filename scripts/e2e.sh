@@ -85,6 +85,22 @@ head -c 4 "$WORK/served.tspi" | grep -q TSPI
 echo "serve ok"
 kill %% 2> /dev/null
 
+step "tspi record: live stream -> .tspi"
+if command -v node > /dev/null 2>&1; then
+  # Replay the run we just made as a live stream, record it back, and require the
+  # trajectories to survive the round trip through the wire format.
+  node tools/live-stream/replay_server.mjs "$WORK/run.tspi" --port 18322 --rate 20 --tick-ms 20 \
+    > /dev/null 2>&1 &
+  sleep 1
+  $TSPI record ws://127.0.0.1:18322/stream -o "$WORK/recorded.tspi" --quiet
+  $TSPI inspect "$WORK/recorded.tspi" --provenance | grep -F '"op":"record"' > /dev/null
+  $TSPI diff "$WORK/run.tspi" "$WORK/recorded.tspi" --tol-m 0.001 | grep -q "WITHIN TOLERANCE"
+  kill %% 2> /dev/null
+  echo "record ok"
+else
+  echo "node not found — skipping the live-stream record step"
+fi
+
 step "json schema conformance"
 "$PYTHON" scripts/check_schemas.py > /dev/null && echo "schemas ok"
 

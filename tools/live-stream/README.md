@@ -76,6 +76,46 @@ Then open `web/viewer/index.html`, type the `ws://` URL into the connect box on
 the drop screen (or use `?ws=ws://localhost:8787/stream` when the page is
 served), and the run appears as it flies.
 
+## Recording a live run
+
+A producer keeps no history, so without a sink a live engagement is gone once it
+scrolls past. `tspi record` subscribes like any other viewer and lands the run in
+the container:
+
+```sh
+tspi record ws://localhost:8787/stream -o runs/live.tspi     # Ctrl-C stops and finishes
+tspi record ws://localhost:8787/stream --duration 120        # or stop after 2 minutes
+```
+
+It stops on the producer's `end`, on `--duration`, or on Ctrl-C, and in every case
+writes a complete, valid file — including when the producer dies mid-stream. From
+there the whole toolchain applies: play it back in any viewer, `tspi inspect` it,
+`tspi diff` it, `tspi append` simulated munitions against it, analyse it with
+`tools/tspi_py`.
+
+Recording copies bytes rather than re-interpolating — the wire already carries the
+container's records — so a recorded replay is *identical* to its source:
+
+```sh
+node tools/live-stream/replay_server.mjs runs/ship-to-air.tspi &
+tspi record ws://localhost:8787/stream -o /tmp/rec.tspi
+tspi diff runs/ship-to-air.tspi /tmp/rec.tspi --tol-m 0.001   # max delta 0.000E+000 m
+```
+
+What it does with imperfect input, all of it counted in provenance rather than
+hidden: dropped frames are padded so `t = t0 + i*dt` stays exact (`gaps_filled`),
+records for unannounced or non-finite entities are dropped (`records_dropped`),
+duplicate/stale indices keep the first write, a mid-stream join is rebased so
+samples keep their true sim time, and quaternions are made sign-continuous as the
+container requires (`quats_sign_flipped`). Provenance carries the producer's own
+`dynamics` tag — this toolchain did not compute the motion and does not claim to.
+
+Memory stays flat regardless of run length: records spool to one temp file per
+entity and stream into their blocks at the end.
+
+Run a viewer and a recorder against the same producer at once — they are
+independent subscribers.
+
 ## What the viewer does with a live source
 
 - **LIVE badge** rides the head of the stream, one sample interval behind so
@@ -98,21 +138,30 @@ served), and the run appears as it flies.
 | `replay_server.mjs` | Node producer that replays a `.tspi`; also serves the viewer |
 | `../../web/viewer/tspi.js` | `LiveTspiFile` — the consumer half |
 | `../../web/viewer/tests/live.test.mjs` | proves live == replay, bit-for-bit |
+| `../../src/Tspi.Sim/Live/LiveRecorder.cs` | the `tspi record` sink (stream → `.tspi`) |
+| `../../src/Tspi.Tests/RecordTests.cs` | recorder tests over a real WebSocket |
 
 ## Tests
 
 ```sh
-node web/viewer/tests/live.test.mjs runs/ship-to-air.tspi
+node web/viewer/tests/live.test.mjs runs/ship-to-air.tspi          # viewer side
+dotnet test src/Tspi.Tests --filter FullyQualifiedName~RecordTests # recorder side
 ```
 
-Covers: file → wire → `LiveTspiFile` with every pose compared against the file
-reader; duplicate/stale/gapped/unknown-`ord` frames; joining mid-stream; and a
-full pass over a real WebSocket against `replay_server.mjs`.
+The viewer test covers: file → wire → `LiveTspiFile` with every pose compared
+against the file reader; duplicate/stale/gapped/unknown-`ord` frames; joining
+mid-stream; and a full pass over a real WebSocket against `replay_server.mjs`.
+The recorder tests drive `tspi record` from a hand-rolled WebSocket producer and
+read the written file back: round-trip fidelity, gap padding, mid-stream rebase,
+duplicate/stale/unknown drops, quaternion sign continuity, `--duration` stops, a
+producer that dies mid-stream, and the protocol/ordering errors. `scripts/e2e.sh`
+records a replayed run and `tspi diff`s it against the original.
 
 ## Limits (deliberate)
 
-- **No history backfill** for late joiners — see `PROTOCOL.md`. Record a `.tspi`
-  alongside if the whole run matters; both can run at once.
+- **No history backfill** for late joiners — see `PROTOCOL.md`. Run `tspi record`
+  from the start if the whole run matters; a recorder and viewers are independent
+  subscribers.
 - **One-way.** Viewers never command the sim.
 - **Plain `ws://`, no compression** — a lab-LAN tool. Put a TLS-terminating
   reverse proxy in front for `wss://`.

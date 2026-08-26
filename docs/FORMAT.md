@@ -147,6 +147,19 @@ holds that same source-file hash. Their `dynamics` tag is one of:
 An imported file has no `environment` field (the real air mass is unknown), so a later
 `tspi append` flies its munitions in the default environment unless one is added.
 
+Files created by `tspi record` (a live stream captured off the wire — see
+`tools/live-stream/PROTOCOL.md`) carry an `op: "record"` provenance record: no
+`seed`/`models`, a `source` naming the producer's `ws://` endpoint, the wire `protocol`
+version, and the honest counters `samples`, `gaps_filled` (samples synthesized over
+dropped frames), `records_dropped`, plus `stop_reason`. Their `dynamics` tag is
+whatever the producer declared in its `hello` — this toolchain did not compute the
+motion and does not claim to. The header's `manifest_sha256` slot holds the SHA-256 of
+that `hello` message (no manifest exists), which identifies the stream configuration.
+A recorded file has no `environment` field for the same reason an imported one does
+not. Streams carry the same 64-byte layout-1 records this container stores, so
+recording copies bytes rather than re-interpolating; the recorder does enforce the
+sign-continuous quaternion rule above (`quats_sign_flipped` counts the fixes).
+
 ## Trailer (32 bytes, always the last 32 bytes of the file)
 
 | offset | size | field |
